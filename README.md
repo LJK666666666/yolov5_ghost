@@ -56,7 +56,7 @@
 #### 1. 克隆项目
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/LJK666666666/yolov5_ghost.git
 cd yolov5_ghost
 ```
 
@@ -85,7 +85,7 @@ python -c "import cv2, numpy, yaml, matplotlib; print('所有依赖安装成功�
 #### 1. 克隆项目
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/LJK666666666/yolov5_ghost.git
 cd yolov5_ghost
 ```
 
