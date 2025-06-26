@@ -23,6 +23,9 @@
 !setup.cfg
 !cfg/yolov3*.cfg
 
+# Exclude dataset directory (too large for GitHub)
+data/SafetyVests.v6/
+
 storage.googleapis.com
 runs/*
 data/*

@@ -172,23 +172,70 @@ python -c "import torch; torch.hub.download_url_to_file('https://github.com/ultr
 - **测试集**: 用于最终性能评估
 - **标注格式**: YOLO 格式 (txt 文件)
 - **图像格式**: JPG/JPEG
-- **数据来源**: [Roboflow Safety Vests Dataset](https://universe.roboflow.com/roboflow-universe-projects/safety-vests/dataset/6)
+- **许可证**: CC BY 4.0
+- **数据来源**: [Roboflow Safety Vests Dataset v6](https://universe.roboflow.com/roboflow-universe-projects/safety-vests/dataset/6)
+
+### 📥 数据集下载
+
+**重要提示**: 由于数据集文件较大（约几百MB），未直接上传到GitHub仓库。请按以下步骤获取数据集：
+
+#### 方法1：直接从 Roboflow 下载（推荐）
+1. 访问数据集页面：[https://universe.roboflow.com/roboflow-universe-projects/safety-vests/dataset/6](https://universe.roboflow.com/roboflow-universe-projects/safety-vests/dataset/6)
+2. 选择 **"YOLOv5 PyTorch"** 格式
+3. 点击 **"Download zip to computer"**
+4. 解压下载的文件到项目的 `data/SafetyVests.v6/` 目录
+
+#### 方法2：使用 Roboflow Python SDK
+```bash
+# 安装 roboflow 库
+pip install roboflow
+
+# 下载数据集
+python -c "
+from roboflow import Roboflow
+rf = Roboflow(api_key='YOUR_API_KEY')  # 需要注册获取API Key
+project = rf.workspace('roboflow-universe-projects').project('safety-vests')
+dataset = project.version(6).download('yolov5', location='data/SafetyVests.v6')
+"
+```
+
+#### 方法3：手动创建目录结构
+如果暂时无法下载数据集，可以先创建目录结构用于测试：
+```bash
+mkdir -p data/SafetyVests.v6/{train,valid,test}/{images,labels}
+```
 
 ### 数据集结构
+
+下载并解压后，目录结构应该如下：
 
 ```
 data/SafetyVests.v6/
 ├── train/
-│   ├── images/     # 训练图像
-│   └── labels/     # 训练标签
+│   ├── images/     # 训练图像 (JPG格式)
+│   └── labels/     # 训练标签 (TXT格式，YOLO标注)
 ├── valid/
 │   ├── images/     # 验证图像
 │   └── labels/     # 验证标签
 ├── test/
 │   ├── images/     # 测试图像
 │   └── labels/     # 测试标签
-└── data.yaml       # 数据集配置文件
+├── data.yaml       # 数据集配置文件
+├── README.dataset.txt
+└── README.roboflow.txt
 ```
+
+### 📋 数据集信息
+
+**检测类别**:
+- `0`: NO-Safety Vest (未穿戴安全背心)
+- `1`: Safety Vest (穿戴安全背心)
+
+**数据集统计** (大约):
+- 训练集: ~500+ 张图像
+- 验证集: ~100+ 张图像  
+- 测试集: ~100+ 张图像
+- 标注格式: YOLO格式 (相对坐标)
 
 ## 🚀 快速开始
 
