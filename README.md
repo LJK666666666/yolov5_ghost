@@ -1,9 +1,11 @@
 # YOLOv5 Ghost - 安全背心检测系统
 
-<!-- ![YOLOv5](https://img.shields.io/badge/YOLOv5-v7.0-green)
+![YOLOv5](https://img.shields.io/badge/YOLOv5-v7.0-green)
 ![Python](https://img.shields.io/badge/Python-3.8+-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-1.8+-red)
-![License](https://img.shields.io/badge/License-AGPL--3.0-lightgrey) -->
+![License](https://img.shields.io/badge/License-AGPL--3.0-lightgrey)
+![GitHub release](https://img.shields.io/badge/release-v1.0.0-orange)
+![GitHub stars](https://img.shields.io/github/stars/LJK666666666/yolov5_ghost?style=social)
 
 基于 YOLOv5 Ghost 轻量化模型的安全背心检测系统，用于工业安全场景中的个人防护设备（PPE）检测。
 
