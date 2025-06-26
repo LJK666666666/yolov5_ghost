@@ -23,8 +23,12 @@
 !setup.cfg
 !cfg/yolov3*.cfg
 
+# Exclude dataset directory (too large for GitHub)
+data/SafetyVests.v6/
+
 storage.googleapis.com
-runs/*
+# Allow entire runs directory to be uploaded to GitHub
+# All runs/* files will be included
 data/*
 data/images/*
 !data/*.yaml
@@ -49,7 +53,8 @@ VOC/
 
 # Neural Network weights -----------------------------------------------------------------------------------------------
 *.weights
-*.pt
+# *.pt  # 注释掉，允许上传预训练权重
+!yolov5s.pt  # 明确允许 yolov5s.pt
 *.pb
 *.onnx
 *.engine
