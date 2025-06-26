@@ -360,14 +360,14 @@ class Focus(nn.Module):
 class GhostConv(nn.Module):
     """Implements Ghost Convolution for efficient feature extraction, see https://github.com/huawei-noah/ghostnet."""
 
-    def __init__(self, c1, c2, k=1, s=1, g=1, act=True):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):
         """Initializes GhostConv with in/out channels, kernel size, stride, groups, and activation; halves out channels
         for efficiency.
         """
         super().__init__()
         c_ = c2 // 2  # hidden channels
-        self.cv1 = Conv(c1, c_, k, s, None, g, act=act)
-        self.cv2 = Conv(c_, c_, 5, 1, None, c_, act=act)
+        self.cv1 = Conv(c1, c_, k, s, p, g, act=act)
+        self.cv2 = Conv(c_, c_, 5, 1, p, c_, act=act)
 
     def forward(self, x):
         """Performs forward pass, concatenating outputs of two convolutions on input `x`: shape (B,C,H,W)."""
