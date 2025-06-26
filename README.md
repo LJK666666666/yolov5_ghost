@@ -926,3 +926,26 @@ python detect.py --weights runs/train/Ghost模型/weights/best.pt --source 测�
 
 ⭐ **基于 YOLOv5 Ghost 的轻量化安全背心检测系统**  
 🎯 **高效 · 轻量 · 精准 · 易用**
+
+## 视频流检测
+
+您可以使用 `tools/video.py` 脚本进行实时视频流检测。
+
+### 摄像头实时检测
+
+```bash
+python tools/video.py --weights models_trained/Ghost_e10_0626/weights/best.pt --source 0
+```
+
+- `--weights`: 指定训练好的模型权重路径。
+- `--source 0`: 使用默认摄像头。
+
+### 视频文件检测
+
+```bash
+python tools/video.py --weights models_trained/Ghost_e10_0626/weights/best.pt --source ./data/videos/your_video.mp4
+```
+
+- `--source`: 指定视频文件路径。
+
+在检测窗口按 `q` 键退出。

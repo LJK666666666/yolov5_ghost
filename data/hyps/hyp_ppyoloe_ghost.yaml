@@ -1,0 +1,46 @@
+# YOLOv5 Hyperparameters converted from a PP-YOLOE configuration
+# For use with: python train.py --hyp data/hyps/hyp_ppyoloe_ghost.yaml --optimizer AdamW
+
+# Learning Rate
+lr0: 0.0007  # initial learning rate (from PP-YOLOE base_lr: 0.0007)
+lrf: 0.01  # final OneCycleLR learning rate (lr0 * lrf), common default
+
+# Optimizer (Use --optimizer AdamW on command line)
+momentum: 0.9  # Adam beta1 (from PP-YOLOE beta1: 0.9)
+weight_decay: 0.001 # optimizer weight decay (from PP-YOLOE weight_decay: 0.001)
+
+# Training
+warmup_epochs: 3.0  # warmup epochs (PP-YOLOE used 1000 steps, 3 epochs is a common YOLOv5 start)
+warmup_momentum: 0.8  # warmup initial momentum (YOLOv5 default)
+warmup_bias_lr: 0.1  # warmup initial bias lr (YOLOv5 default)
+
+# Loss
+box: 0.05  # box loss gain (YOLOv5 default, adjust as needed)
+cls: 0.5  # cls loss gain (YOLOv5 default, adjust as needed)
+obj: 1.0  # obj loss gain (YOLOv5 default, adjust as needed)
+fl_gamma: 2.0  # focal loss gamma (from PP-YOLOE gamma: 2.0)
+
+# Loss Positive Weights
+cls_pw: 1.0  # cls BCELoss positive_weight (YOLOv5 default)
+obj_pw: 1.0  # obj BCELoss positive_weight (YOLOv5 default)
+
+# IoU
+iou_t: 0.20  # IoU training threshold (YOLOv5 default)
+anchor_t: 4.0  # anchor-multiple threshold (YOLOv5 default)
+
+# Augmentation
+# NOTE: YOLOv5 does not support scheduled augmentations via hyp file.
+# These are set to reasonable constant values.
+hsv_h: 0.015  # image HSV-Hue augmentation (fraction)
+hsv_s: 0.7  # image HSV-Saturation augmentation (fraction)
+hsv_v: 0.4  # image HSV-Value augmentation (fraction)
+degrees: 0.0  # image rotation (+/- deg)
+translate: 0.1  # image translation (+/- fraction)
+scale: 0.5  # image scale (+/- gain)
+shear: 0.0  # image shear (+/- deg)
+perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
+flipud: 0.0  # image flip up-down (probability)
+fliplr: 0.5  # image flip left-right (probability)
+mosaic: 1.0  # image mosaic (probability, PP-YOLOE used adaptive mosaic)
+mixup: 0.1  # image mixup (probability, PP-YOLOE used adaptive mixup)
+copy_paste: 0.0 # segment copy-paste (probability)
