@@ -1,14 +1,8 @@
 # Repo-specific GitIgnore ----------------------------------------------------------------------------------------------
-*.jpg
-*.jpeg
-*.png
 *.bmp
 *.tif
 *.tiff
 *.heic
-*.JPG
-*.JPEG
-*.PNG
 *.BMP
 *.TIF
 *.TIFF
@@ -25,6 +19,8 @@
 
 # Exclude dataset directory (too large for GitHub)
 data/SafetyVests.v6/
+
+runs/*
 
 storage.googleapis.com
 # Allow entire runs directory to be uploaded to GitHub
