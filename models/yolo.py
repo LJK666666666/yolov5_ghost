@@ -39,6 +39,7 @@ from models.common import (
     Concat,
     Contract,
     Conv,
+    CoordAtt,
     CrossConv,
     DetectMultiBackend,
     DWConv,
@@ -429,6 +430,11 @@ def parse_model(d, ch):
             if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x}:
                 args.insert(2, n)  # number of repeats
                 n = 1
+        elif m is CoordAtt:
+            c1, c2 = ch[f], args[0]
+            if c2 != no:  # if not output
+                c2 = make_divisible(c2 * gw, ch_mul)
+            args = [c1, c2, *args[1:]]
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
