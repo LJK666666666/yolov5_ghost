@@ -384,7 +384,7 @@ class GhostBottleneck(nn.Module):
         c_ = c2 // 2
         self.conv = nn.Sequential(
             GhostConv(c1, c_, 1, 1),  # pw
-            DWConv(c_, c_, k, s, act=False) if s == 2 else nn.Identity(),  # dw
+            DWConv(c_, c_, k, s, act=False),  # dw - now always used
             GhostConv(c_, c2, 1, 1, act=False),
         )  # pw-linear
         self.shortcut = (
@@ -1121,3 +1121,135 @@ class Classify(nn.Module):
         if isinstance(x, list):
             x = torch.cat(x, 1)
         return self.linear(self.drop(self.pool(self.conv(x)).flatten(1)))
+
+
+# =====================================================================================
+# 以下为CA注意力机制代码
+'''
+我来详细解释CA注意力机制中每一层的输入维度变化和shape参数的含义。
+
+## Shape的4个参数含义：
+在PyTorch中，`x.size()` 或 `x.shape` 返回的是 **[N, C, H, W]**：
+- **N (Batch Size)**: 批次大小，一次处理多少张图片
+- **C (Channels)**: 通道数，特征图的深度
+- **H (Height)**: 高度，特征图的垂直尺寸
+- **W (Width)**: 宽度，特征图的水平尺寸
+
+## CA注意力机制中每一层的维度变化：
+
+假设输入参数：
+- inp=256, oup=256, reduction=32
+- 输入x的维度：**[2, 256, 32, 32]** （2张图片，256通道，32×32尺寸）
+
+### 详细的维度变化过程：
+
+1. **输入层**
+   - `x`: **[2, 256, 32, 32]**
+   - `identity = x`: **[2, 256, 32, 32]**
+
+2. **池化操作**
+   - `x_h = self.pool_h(x)`: **[2, 256, 32, 1]** (水平方向池化，保持高度)
+   - `x_w = self.pool_w(x)`: **[2, 256, 1, 32]** (垂直方向池化，保持宽度)
+   - `x_w.permute(0, 1, 3, 2)`: **[2, 256, 32, 1]** (转置为便于拼接)
+
+3. **特征拼接**
+   - `y = torch.cat([x_h, x_w], dim=2)`: **[2, 256, 64, 1]** (32+32=64)
+
+4. **降维处理**
+   - `mip = max(8, 256//32) = 8`
+   - `y = self.conv1(y)`: **[2, 8, 64, 1]** (256→8通道)
+   - `y = self.bn1(y)`: **[2, 8, 64, 1]** (批归一化，维度不变)
+   - `y = self.act(y)`: **[2, 8, 64, 1]** (激活函数，维度不变)
+
+5. **特征分割**
+   - `x_h, x_w = torch.split(y, [32, 32], dim=2)`:
+     - `x_h`: **[2, 8, 32, 1]**
+     - `x_w`: **[2, 8, 32, 1]**
+   - `x_w = x_w.permute(0, 1, 3, 2)`: **[2, 8, 1, 32]**
+
+6. **生成注意力权重**
+   - `a_h = self.conv_h(x_h).sigmoid()`: **[2, 256, 32, 1]** (8→256通道)
+   - `a_w = self.conv_w(x_w).sigmoid()`: **[2, 256, 1, 32]** (8→256通道)
+
+7. **最终输出**
+   - `out = identity * a_w * a_h`: **[2, 256, 32, 32]**
+   - 通过广播机制：
+     - identity: [2, 256, 32, 32]
+     - a_w: [2, 256, 1, 32] → 广播到 [2, 256, 32, 32]
+     - a_h: [2, 256, 32, 1] → 广播到 [2, 256, 32, 32]
+
+## 关键维度变化总结：
+
+| 步骤 | 操作 | 输入维度 | 输出维度 |
+|------|------|----------|----------|
+| 1 | 原始输入 | - | [N, C, H, W] |
+| 2 | 水平池化 | [N, C, H, W] | [N, C, H, 1] |
+| 3 | 垂直池化+转置 | [N, C, H, W] | [N, C, W, 1] |
+| 4 | 特征拼接 | 两个[N, C, *, 1] | [N, C, H+W, 1] |
+| 5 | 降维卷积 | [N, C, H+W, 1] | [N, mip, H+W, 1] |
+| 6 | 特征分割 | [N, mip, H+W, 1] | [N, mip, H, 1] + [N, mip, 1, W] |
+| 7 | 生成权重 | [N, mip, H, 1] | [N, oup, H, 1] |
+| 8 | 生成权重 | [N, mip, 1, W] | [N, oup, 1, W] |
+| 9 | 最终输出 | [N, oup, H, W] + 权重 | [N, oup, H, W] |
+
+这样的设计能够捕获空间位置信息并将其编码到注意力权重中，从而增强特征表示能力。
+'''
+# =====================================================================================
+
+class h_swish(nn.Module):
+    """Hard Swish activation function for improved efficiency."""
+    
+    def __init__(self, inplace=True):
+        super(h_swish, self).__init__()
+        self.inplace = inplace
+
+    def forward(self, x):
+        """Applies Hard Swish activation function."""
+        return x * torch.nn.functional.relu6(x + 3., inplace=self.inplace) / 6.
+
+
+class CoordAtt(nn.Module):
+    """Coordinate Attention mechanism for enhanced feature representation."""
+    
+    def __init__(self, inp, oup, reduction=32):
+        """Initialize Coordinate Attention with input channels, output channels and reduction ratio."""
+        super(CoordAtt, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+
+        mip = max(8, inp // reduction)
+
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+        
+        self.conv_h = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        
+
+    def forward(self, x):
+        """Forward pass applying coordinate attention mechanism."""
+        identity = x
+        
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y) 
+        
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+
+        out = identity * a_w * a_h
+
+        return out
+
+# =====================================================================================
+# CA注意力机制代码结束
+# =====================================================================================
