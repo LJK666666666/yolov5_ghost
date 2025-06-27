@@ -93,8 +93,10 @@
 
 | 配置文件 | 特点 | 适用模型 | 启用方式 |
 |----------|------|----------|----------|
-| **默认超参数** | 标准配置 | 所有模型 | 默认使用 |
-| **推荐超参数** | 优化配置 | Ghost模型 | `--hyp data/hyps/hyp.recommand.yaml` |
+| **推荐超参数** | 优化配置 ⭐ **默认** | Ghost模型 | 默认使用（无需指定参数） |
+| **自定义超参数** | 用户配置 | 所有模型 | `--hyp your_config.yaml` |
+
+> 🎉 **新更新**: `hyp.recommand.yaml` 现已设为默认超参数配置，训练时无需手动指定即可享受优化效果！
 
 ### 🚀 性能优势
 - **模型轻量化**: Ghost模块减少约 19% 的参数量
@@ -298,9 +300,15 @@ data/SafetyVests.v6/
 # 使用WIoU损失函数（推荐小目标检测）
 --box-loss wiou
 
-# 使用推荐超参数配置（针对Ghost模型优化）
---hyp data/hyps/hyp.recommand.yaml
+# 🎉 好消息：推荐超参数配置现已默认启用！
+# 以下命令会自动使用 data/hyps/hyp.recommand.yaml 配置
+python train.py --data data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt
+
+# 如需使用其他超参数配置，可手动指定
+--hyp path/to/your/custom_hyp.yaml
 ```
+
+> 💡 **重要更新**: 从 v1.1.0 开始，`hyp.recommand.yaml` 已设为默认超参数配置，无需手动指定即可享受优化的训练效果！
 
 ### 使用原始 YOLOv5s 模型
 
@@ -714,6 +722,111 @@ yolov5_ghost/
 | **CIoU** | 考虑距离、重叠、比例 | Complete IoU | 一般目标检测 |
 | **WIoU** | 动态权重聚焦 | Wise IoU with focus | 小目标、遮挡检测 |
 
+### 超参数调优
+
+#### 针对不同模型的超参数建议
+
+**原始YOLOv5s:**
+- 学习率: 0.01 (标准)
+- 训练轮次: 100-200
+- 批次大小: 16-32
+- 数据增强: 标准强度
+
+**Ghost_1 轻量化模型:**
+- 学习率: 0.01-0.012 (略高)
+- 训练轮次: 120-180 (更多)
+- 批次大小: 16-24
+- 数据增强: 标准-增强
+
+**Ghost_2 注意力模型:**
+- 学习率: 0.008-0.01 (略低)
+- 训练轮次: 100-150
+- 批次大小: 12-20
+- 数据增强: 增强
+
+**Ghost_12 组合模型:**
+- 学习率: 0.01 (使用推荐配置)
+- 训练轮次: 100-150
+- 批次大小: 16
+- 数据增强: 推荐配置
+
+#### WIoU损失函数使用建议
+```bash
+# 适合使用WIoU的场景
+--box-loss wiou  # 当遇到以下情况时推荐使用：
+# 1. 小目标较多的场景
+# 2. 目标密集重叠的场景  
+# 3. 背景复杂的场景
+# 4. 训练收敛困难时
+```
+
+#### 推荐超参数文件说明
+`data/hyps/hyp.recommand.yaml` 包含：
+- 优化的学习率调度
+- 增强的数据增强参数
+- 适配Ghost模型的权重衰减
+- 安全背心检测任务的特定优化
+
+### 部署优化
+
+#### 模型导出
+
+```bash
+# 导出 ONNX 格式 - 原始模型
+python export.py --weights runs/train/yolov5s_baseline/weights/best.pt --include onnx --img-size 640
+
+# 导出 ONNX 格式 - Ghost_1轻量化模型
+python export.py --weights runs/train/yolov5s_ghost_1/weights/best.pt --include onnx --img-size 640
+
+# 导出 ONNX 格式 - Ghost_2注意力模型
+python export.py --weights runs/train/yolov5s_ghost_2/weights/best.pt --include onnx --img-size 640
+
+# 导出 ONNX 格式 - Ghost_12组合模型（推荐）
+python export.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --include onnx --img-size 640
+
+# 导出 ONNX 格式 - 最终推荐模型
+python export.py --weights runs/train/yolov5s_ghost_final/weights/best.pt --include onnx --img-size 640
+```
+
+#### 移动端部署
+
+```bash
+# 导出 TensorRT - 适合 NVIDIA 设备（Ghost轻量化模型推荐）
+python export.py --weights runs/train/yolov5s_ghost_1/weights/best.pt --include engine --device 0
+
+# 导出 CoreML - 适合 iOS 设备（Ghost轻量化模型推荐）
+python export.py --weights runs/train/yolov5s_ghost_1/weights/best.pt --include coreml
+
+# 导出 TensorRT - 平衡性能模型
+python export.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --include engine --device 0
+
+# 导出 CoreML - 平衡性能模型
+python export.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --include coreml
+```
+
+### 性能调优技巧
+
+#### 推理优化
+1. **批处理**: 对于批量图像处理，使用更大的 batch size
+2. **输入尺寸**: 根据精度需求调整输入图像尺寸（416, 512, 640）
+3. **后处理**: 调整 NMS 阈值平衡速度和精度
+4. **模型选择**: 
+   - 速度优先: 选择 Ghost_1
+   - 精度优先: 选择 Ghost_2  
+   - 平衡性能: 选择 Ghost_12
+
+#### 内存优化
+1. **半精度推理**: 使用 FP16 减少内存占用
+2. **模型剪枝**: 进一步减少模型大小
+3. **量化**: 使用 INT8 量化提升推理速度
+4. **架构选择**: Ghost系列模型天然内存友好
+
+#### 训练优化
+1. **损失函数**: 小目标多时使用 WIoU 损失
+2. **数据增强**: 使用推荐超参数配置  
+3. **学习率**: 根据模型架构调整学习率策略
+4. **训练轮次**: Ghost模型建议更多训练轮次
+
 ## 📈 性能指标
 
 ### 模型架构对比
@@ -974,293 +1087,6 @@ python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_
 python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_2.yaml --weights yolov5s.pt
 ```
 
-#### 检测结果说明
-使用训练好的模型检测后，结果保存在：
-- **图像结果**: `runs/detect/实验名称/` 目录
-- **文本结果**: 每张图片对应的 `.txt` 文件，包含检测框坐标和置信度
-- **裁剪图像**: `--save-crop` 选项保存检测到的目标区域
-
-## 🎯 应用场景
-
-- **建筑工地安全监控**: 实时检测工人是否佩戴安全背心
-- **工厂安全管理**: 确保员工遵守安全规范
-- **港口作业监控**: 检测码头工人安全装备佩戴情况
-- **道路施工监控**: 监控路政工人安全防护
-- **智能安防系统**: 集成到现有安防系统中
-- **移动端应用**: 利用轻量化优势部署到移动设备
-
-## 💡 最佳实践
-
-### 模型选择建议
-
-#### 使用原始 YOLOv5s 的场景
-- 对检测精度要求极高
-- 计算资源充足（GPU 服务器）
-- 不考虑部署成本和推理时间
-
-#### 使用 YOLOv5s-Ghost 的场景  
-- 需要部署到移动端或边缘设备
-- 对推理速度有要求
-- 计算资源有限（CPU 推理）
-- 需要批量处理大量图像
-
-### 训练建议
-
-#### 模型选择建议
-
-**原始 YOLOv5s 的场景:**
-- 对检测精度要求极高
-- 计算资源充足（GPU 服务器）
-- 不考虑部署成本和推理时间
-
-**Ghost_1 轻量化的场景:**
-- 需要最大程度减少参数量
-- 移动端或边缘设备部署
-- 对推理速度要求极高
-
-**Ghost_2 注意力增强的场景:**
-- 需要提升特征表达能力
-- 复杂背景下的目标检测
-- 精度要求高但可接受少量参数增加
-
-**Ghost_12 组合方案的场景（推荐）:**
-- 需要平衡精度和效率
-- 生产环境部署
-- 综合性能最优
-
-#### 训练配置建议
-
-**高精度训练:**
-```bash
-# 原始模型 + 更多训练轮次
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s.yaml --weights yolov5s.pt --batch-size 32 --epochs 200 --img-size 640 --device 0
-```
-
-**平衡性能训练（推荐）:**
-```bash
-# Ghost+CA + WIoU + 推荐超参数
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 150 --img-size 640 --device 0 --box-loss wiou --hyp data/hyps/hyp.recommand.yaml
-```
-
-**轻量化训练:**
-```bash
-# 纯Ghost模块 + 标准配置
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_1.yaml --weights yolov5s.pt --batch-size 16 --epochs 120 --img-size 640 --device 0
-```
-
-**注意力增强训练:**
-```bash
-# CA注意力 + WIoU损失
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_2.yaml --weights yolov5s.pt --batch-size 16 --epochs 130 --img-size 640 --device 0 --box-loss wiou
-```
-
-### 超参数调优
-
-#### 针对不同模型的超参数建议
-
-**原始YOLOv5s:**
-- 学习率: 0.01 (标准)
-- 训练轮次: 100-200
-- 批次大小: 16-32
-- 数据增强: 标准强度
-
-**Ghost_1 轻量化模型:**
-- 学习率: 0.01-0.012 (略高)
-- 训练轮次: 120-180 (更多)
-- 批次大小: 16-24
-- 数据增强: 标准-增强
-
-**Ghost_2 注意力模型:**
-- 学习率: 0.008-0.01 (略低)
-- 训练轮次: 100-150
-- 批次大小: 12-20
-- 数据增强: 增强
-
-**Ghost_12 组合模型:**
-- 学习率: 0.01 (使用推荐配置)
-- 训练轮次: 100-150
-- 批次大小: 16
-- 数据增强: 推荐配置
-
-#### WIoU损失函数使用建议
-```bash
-# 适合使用WIoU的场景
---box-loss wiou  # 当遇到以下情况时推荐使用：
-# 1. 小目标较多的场景
-# 2. 目标密集重叠的场景  
-# 3. 背景复杂的场景
-# 4. 训练收敛困难时
-```
-
-#### 推荐超参数文件说明
-`data/hyps/hyp.recommand.yaml` 包含：
-- 优化的学习率调度
-- 增强的数据增强参数
-- 适配Ghost模型的权重衰减
-- 安全背心检测任务的特定优化
-
-### 部署优化
-
-#### 模型导出
-
-```bash
-# 导出 ONNX 格式 - 原始模型
-python export.py --weights runs/train/yolov5s_baseline/weights/best.pt --include onnx --img-size 640
-
-# 导出 ONNX 格式 - Ghost_1轻量化模型
-python export.py --weights runs/train/yolov5s_ghost_1/weights/best.pt --include onnx --img-size 640
-
-# 导出 ONNX 格式 - Ghost_2注意力模型
-python export.py --weights runs/train/yolov5s_ghost_2/weights/best.pt --include onnx --img-size 640
-
-# 导出 ONNX 格式 - Ghost_12组合模型（推荐）
-python export.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --include onnx --img-size 640
-
-# 导出 ONNX 格式 - 最终推荐模型
-python export.py --weights runs/train/yolov5s_ghost_final/weights/best.pt --include onnx --img-size 640
-```
-
-#### 移动端部署
-
-```bash
-# 导出 TensorRT - 适合 NVIDIA 设备（Ghost轻量化模型推荐）
-python export.py --weights runs/train/yolov5s_ghost_1/weights/best.pt --include engine --device 0
-
-# 导出 CoreML - 适合 iOS 设备（Ghost轻量化模型推荐）
-python export.py --weights runs/train/yolov5s_ghost_1/weights/best.pt --include coreml
-
-# 导出 TensorRT - 平衡性能模型
-python export.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --include engine --device 0
-
-# 导出 CoreML - 平衡性能模型
-python export.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --include coreml
-```
-
-### 性能调优技巧
-
-#### 推理优化
-1. **批处理**: 对于批量图像处理，使用更大的 batch size
-2. **输入尺寸**: 根据精度需求调整输入图像尺寸（416, 512, 640）
-3. **后处理**: 调整 NMS 阈值平衡速度和精度
-4. **模型选择**: 
-   - 速度优先: 选择 Ghost_1
-   - 精度优先: 选择 Ghost_2  
-   - 平衡性能: 选择 Ghost_12
-
-#### 内存优化
-1. **半精度推理**: 使用 FP16 减少内存占用
-2. **模型剪枝**: 进一步减少模型大小
-3. **量化**: 使用 INT8 量化提升推理速度
-4. **架构选择**: Ghost系列模型天然内存友好
-
-#### 训练优化
-1. **损失函数**: 小目标多时使用 WIoU 损失
-2. **数据增强**: 使用推荐超参数配置  
-3. **学习率**: 根据模型架构调整学习率策略
-4. **训练轮次**: Ghost模型建议更多训练轮次
-
-## 📚 相关研究
-
-本项目基于以下研究成果：
-
-### 核心论文
-- **GhostNet 论文**: 《GhostNet: More Features from Cheap Operations》
-  - 作者: Kai Han, Yunhe Wang, Qi Tian, et al.
-  - 会议: CVPR 2020
-  - 核心思想: 通过 Ghost 模块用更少的计算生成更多特征图
-
-- **Coordinate Attention 论文**: 《Coordinate Attention for Efficient Mobile Network Design》
-  - 作者: Qibin Hou, Daquan Zhou, Jiashi Feng
-  - 会议: CVPR 2021
-  - 核心思想: 轻量级注意力机制，同时考虑位置和通道信息
-
-- **WIoU 论文**: 《Wise-IoU: Bounding Box Regression Loss with Dynamic Focusing Mechanism》
-  - 作者: Zanjia Tong, Yuhang Chen, Zewei Xu, Rong Yu
-  - 年份: 2023
-  - 核心思想: 动态聚焦机制的边界框回归损失
-  
-- **项目参考论文**: 《基于深度学习的安全帽与反光衣检测研究》- 张学立
-  - 为本项目的安全背心检测任务提供理论基础
-
-### 技术参考
-- **YOLOv5 官方仓库**: [Ultralytics YOLOv5](https://github.com/ultralytics/yolov5)
-- **GhostNet 官方实现**: [Huawei-Noah GhostNet](https://github.com/huawei-noah/ghostnet)
-- **Coordinate Attention 官方实现**: [CoordAttention](https://github.com/Andrew-Qibin/CoordAttention)
-- **WIoU 损失函数参考**: [Wise-IoU](https://github.com/Zzh-tju/WIoU)
-
-### 创新点
-1. **多架构融合**: 将 GhostNet、CA注意力机制和WIoU损失融入 YOLOv5 检测框架
-2. **模块化设计**: 提供多种模型配置，支持灵活选择和组合
-3. **参数化配置**: 通过命令行参数轻松切换不同的优化策略
-4. **实用性验证**: 在实际的安全背心检测任务上验证效果
-5. **完整工具链**: 从训练到部署的完整解决方案
-
-### Ghost 模块原理
-
-#### Ghost Operation 数学描述
-对于输入特征图 X ∈ R^(h×w×c)：
-
-1. **普通卷积**: Y = X * F，参数量 = h×w×c×n
-2. **Ghost 卷积**: 
-   - Y' = X * F'，参数量 = h×w×c×(n/2)
-   - Y'' = Φ(Y')，其中 Φ 是线性变换
-   - Y = Concat(Y', Y'')
-
-#### 优势分析
-- **Ghost模块**: 理论上减少 50% 的参数量和计算量
-- **CA注意力**: 轻量级设计，计算开销小，提升特征表达能力
-- **WIoU损失**: 动态聚焦机制，特别适合小目标和遮挡目标检测
-- **组合优化**: 多种技术结合，在保持精度的同时显著提升效率
-
-## 📄 许可证
-
-本项目采用 AGPL-3.0 许可证 - 详见 [LICENSE](LICENSE) 文件
-
-## 🙏 致谢
-
-- [Ultralytics](https://ultralytics.com/) - YOLOv5 官方实现
-- [Roboflow](https://roboflow.com/) - SafetyVests.v6 数据集提供
-- [Huawei Noah's Ark Lab](https://github.com/huawei-noah/ghostnet) - GhostNet 原始实现
-- [Andrew-Qibin](https://github.com/Andrew-Qibin/CoordAttention) - Coordinate Attention 实现
-- [Zzh-tju](https://github.com/Zzh-tju/WIoU) - WIoU 损失函数参考
-- 张学立 - 相关研究论文作者
-
-## 📊 项目总结
-
-### 实现成果
-✅ **成功集成**: 将多种轻量化技术融入 YOLOv5 框架  
-✅ **模块化设计**: 提供5种不同的模型配置选择  
-✅ **参数化控制**: 支持损失函数和超参数的灵活配置  
-✅ **易用性**: 通过命令行参数轻松切换不同优化策略  
-✅ **完整工具链**: 从训练到部署的完整解决方案  
-
-### 技术亮点
-🔧 **多模型架构**: 基线、Ghost、CA、组合四种架构选择  
-🔧 **智能损失函数**: WIoU损失特别适合小目标检测  
-🔧 **优化超参数**: 针对Ghost模型的推荐配置  
-🔧 **灵活配置**: 通过YAML文件和命令行参数灵活控制  
-🔧 **文档完善**: 详细的使用说明和最佳实践指导  
-
-### 模型配置总结
-
-| 配置 | 特点 | 命令参数 | 适用场景 |
-|------|------|----------|----------|
-| **基线** | 原始YOLOv5s | `--cfg models/yolov5s.yaml` | 精度基准 |
-| **Ghost_1** | 纯轻量化 | `--cfg models/yolov5s-ghost_1.yaml` | 极致轻量 |
-| **Ghost_2** | 纯注意力 | `--cfg models/yolov5s-ghost_2.yaml` | 精度增强 |
-| **Ghost_12** | 平衡组合 | `--cfg models/yolov5s-ghost_12.yaml` | 生产推荐 |
-| **Final** | 最终方案 | `--cfg models/yolov5s-ghost.yaml` | 部署优选 |
-
-### 优化策略总结
-
-| 策略 | 启用方式 | 效果 | 适用模型 |
-|------|----------|------|----------|
-| **WIoU损失** | `--box-loss wiou` | 小目标检测提升 | 所有模型 |
-| **推荐超参数** | `--hyp data/hyps/hyp.recommand.yaml` | 训练优化 | Ghost系列 |
-| **组合优化** | 同时使用上述参数 | 综合性能最优 | Ghost_12/Final |
-
-### 使用命令总结
-
 #### 快速开始 (单行命令)
 ```bash
 # 训练基线模型
@@ -1342,6 +1168,50 @@ python tools/video.py --weights models_trained/Ghost_e10_0626/weights/best.pt --
 - `--source`: 指定视频文件路径。
 
 在检测窗口按 `q` 键退出。
+
+---
+
+⭐ **基于 YOLOv5 的多模块轻量化安全背心检测系统**  
+🎯 **高效 · 轻量 · 精准 · 易用 · 可配置**  
+🔧 **Ghost轻量化 + CA注意力 + WIoU损失 + 优化超参数**
+
+## 📝 更新日志
+
+### v1.1.0 (2025-06-27)
+
+#### 🔧 超参数优化
+- **默认超参数配置更新**: 将 `hyp.recommand.yaml` 设置为默认的数据增强配置
+  - 主训练脚本 `train.py` 现在默认使用优化的超参数配置
+  - 分割训练脚本 `segment/train.py` 同步更新默认配置
+  - 无需手动指定 `--hyp` 参数即可享受优化的训练效果
+
+#### 📈 性能改进
+- **增强的数据增强**: 包含更优的旋转、剪切、混合等增强参数
+- **训练稳定性**: 针对 Ghost 模型优化的学习率和权重衰减配置
+- **小目标检测**: 改进的 HSV 和几何变换参数，提升小目标检测性能
+
+#### 🚀 使用便利性
+- **简化命令**: 训练命令更加简洁，默认配置即为最优
+- **向后兼容**: 仍支持通过 `--hyp` 参数指定自定义超参数文件
+- **一致性**: 主训练和分割训练使用相同的优化配置
+
+#### 示例更新
+```bash
+# 之前需要手动指定
+python train.py --data data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --hyp data/hyps/hyp.recommand.yaml
+
+# 现在可以直接使用（自动使用优化配置）
+python train.py --data data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt
+```
+
+### v1.0.0 (2025-06-25)
+
+#### 🎯 初始发布
+- **Ghost 轻量化模块**: 基于 GhostNet 的模型轻量化
+- **CA 注意力机制**: 坐标注意力增强特征表达
+- **WIoU 损失函数**: 智能 IoU 损失优化训练
+- **多模型配置**: 提供 5 种不同的模型配置选择
+- **完整文档**: 详细的安装、训练、检测指南
 
 ---
 
