@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Anchor optimization tool for safety vest detection
-针对安全背心检测的锚框优化工具
+针对安全背心检测的锚框优化工具.
 
 Usage:
     python utils/anchor_optimization.py --data data/SafetyVests.v6/data.yaml --img 640 --thr 4.0
 """
 
 import argparse
+from pathlib import Path
+
 import numpy as np
 import torch
 import yaml
-from pathlib import Path
 from tqdm import tqdm
+
 from utils.general import colorstr
-from utils.dataloaders import create_dataloader
 
 
 def kmean_anchors(dataset, n=9, img_size=640, thr=4.0, gen=1000, verbose=True):
     """
-    使用k-means聚类算法为安全背心数据集计算最优锚框
+    使用k-means聚类算法为安全背心数据集计算最优锚框.
 
     Args:
         dataset: 数据集路径
@@ -35,15 +35,13 @@ def kmean_anchors(dataset, n=9, img_size=640, thr=4.0, gen=1000, verbose=True):
     """
     from scipy.cluster.vq import kmeans
 
-    print(f'\n{colorstr("Analyzing anchors")}... ', end="")
+    print(f"\n{colorstr('Analyzing anchors')}... ", end="")
 
     # 获取数据集中所有边界框的尺寸
     def print_results(k, verbose=True):
         k = k[np.argsort(k.prod(1))]  # sort small to large
         x, best = metric(k)
-        bpr, aat = (best > thr).mean(), (
-            x > thr
-        ).mean()  # best possible recall, anytime anchor threshold
+        bpr, aat = (best > thr).mean(), (x > thr).mean()  # best possible recall, anytime anchor threshold
         s = (
             f"{prefix}thr={thr:.2f}: {bpr:.4f} best possible recall, {aat:.4f} anchors past thr\n"
             f"{prefix}n={n}, img_size={img_size}, metric_all={x.mean():.3f}/{best.mean():.3f}-mean/best, "
@@ -60,8 +58,8 @@ def kmean_anchors(dataset, n=9, img_size=640, thr=4.0, gen=1000, verbose=True):
         x = torch.min(r, 1 / r).min(2)[0]  # ratio metric
         # x = wh_iou(wh, torch.tensor(k))  # iou metric
         best = x.max(1)[0]  # best_x
-        aat = (x > thr).float().sum(1).mean()  # anchors above threshold
-        bpr = (best > thr).float().mean()  # best possible recall
+        (x > thr).float().sum(1).mean()  # anchors above threshold
+        (best > thr).float().mean()  # best possible recall
         return x, best
 
     def anchor_fitness(k):  # mutation fitness
@@ -89,9 +87,7 @@ def kmean_anchors(dataset, n=9, img_size=640, thr=4.0, gen=1000, verbose=True):
     # 过滤小边界框
     i = (wh0 < 3.0).any(1).sum()
     if i:
-        print(
-            f"{prefix}WARNING: Extremely small objects found: {i} of {len(wh0)} labels are < 3 pixels in size"
-        )
+        print(f"{prefix}WARNING: Extremely small objects found: {i} of {len(wh0)} labels are < 3 pixels in size")
     wh = wh0[(wh0 >= 2.0).any(1)]  # filter > 2 pixels
 
     # 转换为PyTorch张量
@@ -104,9 +100,7 @@ def kmean_anchors(dataset, n=9, img_size=640, thr=4.0, gen=1000, verbose=True):
         assert n <= len(wh)  # apply overdetermined constraint
         s = wh.std(0)  # sigmas for whitening
         k = kmeans(wh / s, n, iter=30)[0] * s  # points
-        assert n == len(
-            k
-        )  # kmeans may return fewer points than requested if wh is insufficient or too similar
+        assert n == len(k)  # kmeans may return fewer points than requested if wh is insufficient or too similar
     except Exception:
         print(f"{prefix}WARNING: switching strategies from kmeans to random init")
         k = np.sort(np.random.rand(n * 2)).reshape(n, 2) * img_size  # random init
@@ -120,13 +114,9 @@ def kmean_anchors(dataset, n=9, img_size=640, thr=4.0, gen=1000, verbose=True):
     for _ in pbar:
         v = np.ones(k.shape)
         while (v == 1).all():  # mutate until a change occurs (prevent duplicates)
-            v = (
-                (np.random.random(k.shape) < 0.3)
-                * random.random()
-                * np.random.randn(*k.shape)
-                * 0.1
-                + 1
-            ).clip(0.3, 3.0)
+            v = ((np.random.random(k.shape) < 0.3) * random.random() * np.random.randn(*k.shape) * 0.1 + 1).clip(
+                0.3, 3.0
+            )
         kg = (k.copy() * v).clip(min=2.0)
         fg = anchor_fitness(kg)
         if fg > fitness:
@@ -145,9 +135,7 @@ def dataset_stats(
     profile=False,
     hub=False,
 ):
-    """
-    获取数据集统计信息，包括边界框分布
-    """
+    """获取数据集统计信息，包括边界框分布."""
 
     def round_labels(labels):
         # Update labels to integer class and 6 decimal place floats
@@ -159,16 +147,12 @@ def dataset_stats(
             assert Path(path).is_file(), f"Error unzipping {path}, file not found"
             ZipFile(path).extractall(path=path.parent)  # unzip
             dir = path.with_suffix("")  # dataset directory == zip name
-            assert (
-                dir.is_dir()
-            ), f"Error unzipping {path}, {dir} not found. path/to/file.zip MUST unzip to path/to/file/"
-            return str(dir), next(
-                dir.rglob("*.yaml")
-            )  # return dataset directory, dataset.yaml path
+            assert dir.is_dir(), (
+                f"Error unzipping {path}, {dir} not found. path/to/file.zip MUST unzip to path/to/file/"
+            )
+            return str(dir), next(dir.rglob("*.yaml"))  # return dataset directory, dataset.yaml path
         else:  # path is dataset directory
-            return path, next(
-                Path(path).rglob("*.yaml")
-            )  # return dataset directory, dataset.yaml path
+            return path, next(Path(path).rglob("*.yaml"))  # return dataset directory, dataset.yaml path
 
     def save_dataset_cache_file(prefix, path, x):
         # Save data.yaml cache file
@@ -182,9 +166,7 @@ def dataset_stats(
         print(f"{prefix}New cache created: {path}")
 
     # 处理数据集路径
-    if isinstance(path, (str, Path)) and str(path).endswith(
-        ".zip"
-    ):  # i.e. gs://bucket/dir/data.zip
+    if isinstance(path, (str, Path)) and str(path).endswith(".zip"):  # i.e. gs://bucket/dir/data.zip
         path, data_file = unzip(path)
     else:
         data_file = path
@@ -204,17 +186,15 @@ def dataset_stats(
     # 解析yaml
     train, val, test, s = (data.get(x) for x in ("train", "val", "test", "download"))
     if val:
-        val = [
-            Path(x).resolve() for x in (val if isinstance(val, list) else [val])
-        ]  # val path
+        val = [Path(x).resolve() for x in (val if isinstance(val, list) else [val])]  # val path
         if not all(x.exists() for x in val):
             name = clean_str(data["path"])  # dataset name
             m = f"\nDataset '{name}' images not found ⚠️ \n"
             if s and len(s):
                 m += f"Dataset download with: python {gdown} && python {s}\n"
-            m += f"Dataset not found."
+            m += "Dataset not found."
             raise FileNotFoundError(m)
-        t1 = time.time()
+        time.time()
         for path in val:
             cache_path = (path / Path(path).name).with_suffix(".cache")  # *.cache file
             try:
@@ -222,9 +202,7 @@ def dataset_stats(
                     np.load(cache_path, allow_pickle=True).item(),
                     True,
                 )  # load dict
-                if cache["version"] != cache_version or cache["hash"] != get_hash(
-                    list(cache["imgs"])
-                ):
+                if cache["version"] != cache_version or cache["hash"] != get_hash(list(cache["imgs"])):
                     cache, exists = (
                         cache_stats(path, cache_path, verbose),
                         False,
@@ -233,30 +211,22 @@ def dataset_stats(
                 cache, exists = cache_stats(path, cache_path, verbose), False  # cache
 
         # Display cache
-        nf, nc, n, imgs, lengths = cache.pop(
-            "results"
-        )  # found, missing, empty, corrupted, total
+        nf, nc, n, imgs, lengths = cache.pop("results")  # found, missing, empty, corrupted, total
         if verbose:
             if imgs or labels:
                 s = f"Scanning '{cache_path}' images and labels... {nf} found, {nm} missing, {ne} empty, {nc} corrupt"
             else:
                 s = f"Scanning '{cache_path}'... {nf} images, {labels} backgrounds, {nc} corrupt"
-            tqdm(
-                None, desc=prefix + s, total=nd, initial=nd, bar_format=BAR_FORMAT
-            )  # display cache results
+            tqdm(None, desc=prefix + s, total=nd, initial=nd, bar_format=BAR_FORMAT)  # display cache results
             if cache["msgs"]:
                 LOGGER.info("\n".join(cache["msgs"]))  # display warnings
-        assert (
-            nf > 0 or not augment
-        ), f"{prefix}No labels found in {cache_path}, can not start training. {HELP_URL}"
+        assert nf > 0 or not augment, f"{prefix}No labels found in {cache_path}, can not start training. {HELP_URL}"
 
         # Read cache
         [cache.pop(k) for k in ("hash", "version", "msgs")]  # remove items
         labels, shapes, self.segments = zip(*cache.values())
         nl = len(np.concatenate(labels, 0))  # number of labels
-        assert (
-            nl > 0 or not augment
-        ), f"{prefix}All labels empty in {cache_path}, can not start training. {HELP_URL}"
+        assert nl > 0 or not augment, f"{prefix}All labels empty in {cache_path}, can not start training. {HELP_URL}"
         self.labels = list(labels)
 
     # Check if label files exist
@@ -275,9 +245,7 @@ def dataset_stats(
     nf, nm, ne, nc, n = cache.pop("results")  # found, missing, empty, corrupt, total
     if exists and verbose:
         d = f"Scanning '{cache_path}' images and labels... {nf} found, {nm} missing, {ne} empty, {nc} corrupt"
-        tqdm(
-            None, desc=prefix + d, total=n, initial=n, bar_format=BAR_FORMAT
-        )  # display cache results
+        tqdm(None, desc=prefix + d, total=n, initial=n, bar_format=BAR_FORMAT)  # display cache results
         if cache["msgs"]:
             LOGGER.info("\n".join(cache["msgs"]))  # display warnings
 
@@ -297,9 +265,7 @@ def main():
         help="dataset.yaml path",
     )
     parser.add_argument("--img-size", type=int, default=640, help="image size")
-    parser.add_argument(
-        "--thr", type=float, default=4.0, help="anchor-label wh ratio threshold"
-    )
+    parser.add_argument("--thr", type=float, default=4.0, help="anchor-label wh ratio threshold")
     parser.add_argument(
         "--gen",
         type=int,
@@ -308,19 +274,17 @@ def main():
     )
     opt = parser.parse_args()
 
-    print(f'\n{colorstr("Anchor Optimization")} starting...')
+    print(f"\n{colorstr('Anchor Optimization')} starting...")
     print(f"Dataset: {opt.data}")
     print(f"Image size: {opt.img_size}")
     print(f"Threshold: {opt.thr}")
     print(f"Generations: {opt.gen}")
 
     # 计算最优锚框
-    anchors = kmean_anchors(
-        opt.data, n=9, img_size=opt.img_size, thr=opt.thr, gen=opt.gen
-    )
+    anchors = kmean_anchors(opt.data, n=9, img_size=opt.img_size, thr=opt.thr, gen=opt.gen)
 
     # 格式化输出
-    print(f'\n{colorstr("Optimized anchors for safety vest detection:")}')
+    print(f"\n{colorstr('Optimized anchors for safety vest detection:')}")
     anchors_formatted = anchors.reshape(3, 6).astype(int)
 
     print("\n# 优化后的锚框尺寸 (适用于安全背心检测)")
@@ -329,7 +293,7 @@ def main():
         level = ["P3/8", "P4/16", "P5/32"][i]
         print(f"  - {list(anchor_set)} # {level}")
 
-    print(f'\n{colorstr("Copy the above anchors to your model config file")}')
+    print(f"\n{colorstr('Copy the above anchors to your model config file')}")
 
 
 if __name__ == "__main__":
