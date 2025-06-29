@@ -26,6 +26,9 @@
 # Exclude dataset directory (too large for GitHub)
 data/SafetyVests.v6/
 
+# Exclude backup directory (contains test results)
+backup/
+
 storage.googleapis.com
 # Allow entire runs directory to be uploaded to GitHub
 # All runs/* files will be included
