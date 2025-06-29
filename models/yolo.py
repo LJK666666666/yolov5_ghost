@@ -27,6 +27,7 @@ if platform.system() != "Windows":
 
 from models.common import (
     C3,
+    C3SE,
     C3SPP,
     C3TR,
     SPP,
@@ -44,15 +45,27 @@ from models.common import (
     DetectMultiBackend,
     DWConv,
     DWConvTranspose2d,
+    EnhancedCSP,
+    EnhancedDetect,
     Expand,
     Focus,
     GhostBottleneck,
     GhostConv,
+    LearnableUpsample,
     Proto,
+    SEModule,
+    SubPixelUpsample,
 )
 from models.experimental import MixConv2d
 from utils.autoanchor import check_anchor_order
-from utils.general import LOGGER, check_version, check_yaml, colorstr, make_divisible, print_args
+from utils.general import (
+    LOGGER,
+    check_version,
+    check_yaml,
+    colorstr,
+    make_divisible,
+    print_args,
+)
 from utils.plots import feature_visualization
 from utils.torch_utils import (
     fuse_conv_and_bn,
@@ -208,7 +221,7 @@ class BaseModel(nn.Module):
         """
         self = super()._apply(fn)
         m = self.model[-1]  # Detect()
-        if isinstance(m, (Detect, Segment)):
+        if isinstance(m, (Detect, Segment, EnhancedDetect)):
             m.stride = fn(m.stride)
             m.grid = list(map(fn, m.grid))
             if isinstance(m.anchor_grid, list):
@@ -245,7 +258,7 @@ class DetectionModel(BaseModel):
 
         # Build strides, anchors
         m = self.model[-1]  # Detect()
-        if isinstance(m, (Detect, Segment)):
+        if isinstance(m, (Detect, Segment, EnhancedDetect)):
 
             def _forward(x):
                 """Passes the input 'x' through the model and returns the processed output."""
@@ -294,7 +307,11 @@ class DetectionModel(BaseModel):
             elif flips == 3:
                 p[..., 0] = img_size[1] - p[..., 0]  # de-flip lr
         else:
-            x, y, wh = p[..., 0:1] / scale, p[..., 1:2] / scale, p[..., 2:4] / scale  # de-scale
+            x, y, wh = (
+                p[..., 0:1] / scale,
+                p[..., 1:2] / scale,
+                p[..., 2:4] / scale,
+            )  # de-scale
             if flips == 2:
                 y = img_size[0] - y  # de-flip ud
             elif flips == 3:
@@ -351,7 +368,7 @@ class ClassificationModel(BaseModel):
         index.
         """
         super().__init__()
-        self._from_detection_model(model, nc, cutoff) if model is not None else self._from_yaml(cfg)
+        (self._from_detection_model(model, nc, cutoff) if model is not None else self._from_yaml(cfg))
 
     def _from_detection_model(self, model, nc=1000, cutoff=10):
         """Creates a classification model from a YOLOv5 detection model, slicing at `cutoff` and adding a classification
@@ -418,19 +435,23 @@ def parse_model(d, ch):
             C3TR,
             C3SPP,
             C3Ghost,
+            C3SE,
+            EnhancedCSP,
             nn.ConvTranspose2d,
             DWConvTranspose2d,
             C3x,
+            LearnableUpsample,
+            SubPixelUpsample,
         }:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, ch_mul)
 
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x}:
+            if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3SE, C3x, EnhancedCSP}:
                 args.insert(2, n)  # number of repeats
                 n = 1
-        elif m is CoordAtt:
+        elif m in {CoordAtt, SEModule}:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, ch_mul)
@@ -440,7 +461,7 @@ def parse_model(d, ch):
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
         # TODO: channel, gw, gd
-        elif m in {Detect, Segment}:
+        elif m in {Detect, Segment, EnhancedDetect}:
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors
                 args[1] = [list(range(args[1] * 2))] * len(f)
@@ -456,7 +477,12 @@ def parse_model(d, ch):
         m_ = nn.Sequential(*(m(*args) for _ in range(n))) if n > 1 else m(*args)  # module
         t = str(m)[8:-2].replace("__main__.", "")  # module type
         np = sum(x.numel() for x in m_.parameters())  # number params
-        m_.i, m_.f, m_.type, m_.np = i, f, t, np  # attach index, 'from' index, type, number params
+        m_.i, m_.f, m_.type, m_.np = (
+            i,
+            f,
+            t,
+            np,
+        )  # attach index, 'from' index, type, number params
         LOGGER.info(f"{i:>3}{str(f):>18}{n_:>3}{np:10.0f}  {t:<40}{str(args):<30}")  # print
         save.extend(x % i for x in ([f] if isinstance(f, int) else f) if x != -1)  # append to savelist
         layers.append(m_)

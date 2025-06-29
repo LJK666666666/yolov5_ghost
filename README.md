@@ -9,7 +9,6 @@
 
 基于 YOLOv5 Ghost 轻量化模型的安全背心检测系统，用于工业安全场景中的个人防护设备（PPE）检测。
 
-
 ## 📋 目录
 
 - [项目简介](#项目简介)
@@ -31,6 +30,7 @@
 本项目是基于 YOLOv5 架构的安全背心检测系统，专门用于识别工业环境中工人是否佩戴安全背心。该系统可以有效提高工业安全管理水平，降低工伤事故风险。
 
 ### 检测类别
+
 - **NO-Safety Vest**: 未穿戴安全背心
 - **Safety Vest**: 穿戴安全背心
 
@@ -51,21 +51,25 @@
 ### 🚀 技术改进
 
 #### 1. Ghost 模块原理
+
 - **Ghost Convolution**: 使用少量卷积操作生成特征图，然后通过线性变换生成"Ghost"特征图
 - **参数减少**: 相比标准卷积，Ghost 卷积可以减少约 50% 的参数和计算量
 - **性能保持**: 在减少计算量的同时，保持接近原始模型的检测精度
 
 #### 2. CA注意力机制（Coordinate Attention）
+
 - **位置敏感**: 能够捕获跨通道信息和位置相关信息
 - **轻量设计**: 计算开销小，适合移动端应用
 - **特征增强**: 通过注意力权重增强重要特征，抑制无关信息
 
 #### 3. WIoU损失函数（Wise IoU Loss）
+
 - **动态聚焦**: 根据锚框质量动态调整损失权重
 - **训练稳定**: 相比传统IoU损失，训练过程更加稳定
 - **精度提升**: 特别适合小目标和遮挡目标的检测
 
 #### 实现的模块
+
 1. **GhostConv**: Ghost 卷积层，替代标准卷积
 2. **GhostBottleneck**: Ghost 瓶颈模块，用于构建更深的网络
 3. **C3Ghost**: 基于 Ghost Bottleneck 的 C3 模块
@@ -74,31 +78,32 @@
 
 ### 📊 模型配置对比
 
-| 模型版本 | 架构特点 | 适用场景 | 配置文件 |
-|----------|----------|----------|----------|
-| **YOLOv5s** | 原始基线模型 | 高精度需求 | `models/yolov5s.yaml` |
-| **YOLOv5s-Ghost_1** | 仅Ghost模块 | 基础轻量化 | `models/yolov5s-ghost_1.yaml` |
-| **YOLOv5s-Ghost_2** | 仅CA注意力 | 精度优化 | `models/yolov5s-ghost_2.yaml` |
-| **YOLOv5s-Ghost_12** | Ghost+CA组合 | 平衡性能 | `models/yolov5s-ghost_12.yaml` |
-| **YOLOv5s-Ghost** | 最终推荐方案 | 生产部署 | `models/yolov5s-ghost.yaml` |
+| 模型版本             | 架构特点     | 适用场景   | 配置文件                       |
+| -------------------- | ------------ | ---------- | ------------------------------ |
+| **YOLOv5s**          | 原始基线模型 | 高精度需求 | `models/yolov5s.yaml`          |
+| **YOLOv5s-Ghost_1**  | 仅Ghost模块  | 基础轻量化 | `models/yolov5s-ghost_1.yaml`  |
+| **YOLOv5s-Ghost_2**  | 仅CA注意力   | 精度优化   | `models/yolov5s-ghost_2.yaml`  |
+| **YOLOv5s-Ghost_12** | Ghost+CA组合 | 平衡性能   | `models/yolov5s-ghost_12.yaml` |
+| **YOLOv5s-Ghost**    | 最终推荐方案 | 生产部署   | `models/yolov5s-ghost.yaml`    |
 
 ### 🔧 损失函数选择
 
-| 损失函数 | 特点 | 使用场景 | 启用方式 |
-|----------|------|----------|----------|
-| **CIoU** | 传统IoU损失 | 一般目标检测 | 默认启用 |
+| 损失函数 | 特点        | 使用场景        | 启用方式          |
+| -------- | ----------- | --------------- | ----------------- |
+| **CIoU** | 传统IoU损失 | 一般目标检测    | 默认启用          |
 | **WIoU** | 动态权重IoU | 小目标/遮挡检测 | `--box-loss wiou` |
 
 ### 🎛️ 超参数配置
 
-| 配置文件 | 特点 | 适用模型 | 启用方式 |
-|----------|------|----------|----------|
-| **推荐超参数** | 优化配置 ⭐ **默认** | Ghost模型 | 默认使用（无需指定参数） |
-| **自定义超参数** | 用户配置 | 所有模型 | `--hyp your_config.yaml` |
+| 配置文件         | 特点                 | 适用模型  | 启用方式                 |
+| ---------------- | -------------------- | --------- | ------------------------ |
+| **推荐超参数**   | 优化配置 ⭐ **默认** | Ghost模型 | 默认使用（无需指定参数） |
+| **自定义超参数** | 用户配置             | 所有模型  | `--hyp your_config.yaml` |
 
-> 🎉 **新更新**: `hyp.recommand.yaml` 现已设为默认超参数配置，训练时无需手动指定即可享受优化效果！
+> 🎉 **新更新**: `hyp.recommend.yaml` 现已设为默认超参数配置，训练时无需手动指定即可享受优化效果！
 
 ### 🚀 性能优势
+
 - **模型轻量化**: Ghost模块减少约 19% 的参数量
 - **计算高效**: Ghost模块减少约 37% 的计算量
 - **注意力增强**: CA注意力机制提升特征表达能力
@@ -163,9 +168,9 @@ conda activate yolov5_ghost
 
 # 或使用 venv
 python -m venv yolov5_ghost
-source yolov5_ghost/bin/activate  # Linux/Mac
+source yolov5_ghost/bin/activate # Linux/Mac
 # 或
-yolov5_ghost\Scripts\activate  # Windows
+yolov5_ghost\Scripts\activate # Windows
 ```
 
 #### 3. 安装 PyTorch
@@ -214,12 +219,14 @@ python -c "import torch; torch.hub.download_url_to_file('https://github.com/ultr
 **重要提示**: 由于数据集文件较大（约几百MB），未直接上传到GitHub仓库。请按以下步骤获取数据集：
 
 #### 方法1：直接从 Roboflow 下载（推荐）
+
 1. 访问数据集页面：[https://universe.roboflow.com/roboflow-universe-projects/safety-vests/dataset/6](https://universe.roboflow.com/roboflow-universe-projects/safety-vests/dataset/6)
 2. 选择 **"YOLOv5 PyTorch"** 格式
 3. 点击 **"Download zip to computer"**
 4. 解压下载的文件到项目的 `data/SafetyVests.v6/` 目录
 
 #### 方法2：使用 Roboflow Python SDK
+
 ```bash
 # 安装 roboflow 库
 pip install roboflow
@@ -234,7 +241,9 @@ dataset = project.version(6).download('yolov5', location='data/SafetyVests.v6')
 ```
 
 #### 方法3：手动创建目录结构
+
 如果暂时无法下载数据集，可以先创建目录结构用于测试：
+
 ```bash
 mkdir -p data/SafetyVests.v6/{train,valid,test}/{images,labels}
 ```
@@ -262,12 +271,14 @@ data/SafetyVests.v6/
 ### 📋 数据集信息
 
 **检测类别**:
+
 - `0`: NO-Safety Vest (未穿戴安全背心)
 - `1`: Safety Vest (穿戴安全背心)
 
 **数据集统计** (大约):
+
 - 训练集: ~500+ 张图像
-- 验证集: ~100+ 张图像  
+- 验证集: ~100+ 张图像
 - 测试集: ~100+ 张图像
 - 标注格式: YOLO格式 (相对坐标)
 
@@ -284,7 +295,7 @@ data/SafetyVests.v6/
 # 2. Ghost轻量化模型
 --cfg models/yolov5s-ghost_1.yaml
 
-# 3. CA注意力增强模型  
+# 3. CA注意力增强模型
 --cfg models/yolov5s-ghost_2.yaml
 
 # 4. Ghost+CA组合模型
@@ -301,14 +312,14 @@ data/SafetyVests.v6/
 --box-loss wiou
 
 # 🎉 好消息：推荐超参数配置现已默认启用！
-# 以下命令会自动使用 data/hyps/hyp.recommand.yaml 配置
+# 以下命令会自动使用 data/hyps/hyp.recommend.yaml 配置
 python train.py --data data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt
 
 # 如需使用其他超参数配置，可手动指定
 --hyp path/to/your/custom_hyp.yaml
 ```
 
-> 💡 **重要更新**: 从 v1.1.0 开始，`hyp.recommand.yaml` 已设为默认超参数配置，无需手动指定即可享受优化的训练效果！
+> 💡 **重要更新**: 从 v1.1.0 开始，`hyp.recommend.yaml` 已设为默认超参数配置，无需手动指定即可享受优化的训练效果！
 
 ### 使用原始 YOLOv5s 模型
 
@@ -354,10 +365,10 @@ python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_
 python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --box-loss wiou --project runs/train --name yolov5s_ghost_12_wiou
 
 # 使用推荐超参数训练
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --hyp data/hyps/hyp.recommand.yaml --project runs/train --name yolov5s_ghost_12_hyp
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --hyp data/hyps/hyp.recommend.yaml --project runs/train --name yolov5s_ghost_12_hyp
 
 # 组合使用所有优化（推荐配置）
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --box-loss wiou --hyp data/hyps/hyp.recommand.yaml --project runs/train --name yolov5s_ghost_12_full
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --box-loss wiou --hyp data/hyps/hyp.recommend.yaml --project runs/train --name yolov5s_ghost_12_full
 
 # 检测
 python detect.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --source data/SafetyVests.v6/test/images --conf 0.25 --save-txt --project runs/detect --name yolov5s_ghost_12_results
@@ -367,7 +378,7 @@ python detect.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --source 
 
 ```bash
 # 使用最终推荐模型配置（等同于ghost_12）
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --box-loss wiou --hyp data/hyps/hyp.recommand.yaml --project runs/train --name yolov5s_ghost_final
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --box-loss wiou --hyp data/hyps/hyp.recommend.yaml --project runs/train --name yolov5s_ghost_final
 
 # 检测
 python detect.py --weights runs/train/yolov5s_ghost_final/weights/best.pt --source data/SafetyVests.v6/test/images --conf 0.25 --save-txt --project runs/detect --name yolov5s_ghost_final_results
@@ -394,7 +405,7 @@ python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_
 python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --epochs 100 --box-loss wiou --name ghost_12_wiou_comparison
 
 # 6. 最终推荐配置
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --epochs 100 --box-loss wiou --hyp data/hyps/hyp.recommand.yaml --name final_optimized_comparison
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --epochs 100 --box-loss wiou --hyp data/hyps/hyp.recommend.yaml --name final_optimized_comparison
 ```
 
 #### 快速对比实验
@@ -402,7 +413,7 @@ python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.
 ```bash
 # 基线 vs 最优配置对比
 python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s.yaml --weights yolov5s.pt --epochs 100 --name baseline
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --epochs 100 --box-loss wiou --hyp data/hyps/hyp.recommand.yaml --name optimized
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --epochs 100 --box-loss wiou --hyp data/hyps/hyp.recommend.yaml --name optimized
 ```
 
 > 💡 **Linux/macOS 并行训练**: 在命令末尾加 `&` 可以并行运行
@@ -477,58 +488,63 @@ python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_
 python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --box-loss wiou --project runs/train --name yolov5s_ghost_12_wiou
 
 # 使用推荐超参数
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --hyp data/hyps/hyp.recommand.yaml --project runs/train --name yolov5s_ghost_12_hyp
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --hyp data/hyps/hyp.recommend.yaml --project runs/train --name yolov5s_ghost_12_hyp
 ```
 
 #### 5. 最终推荐配置训练
 
 **完整优化训练 (多行格式便于理解):**
+
 ```bash
 # 最终推荐配置 - 包含所有优化
 python train.py \
-    --data data/SafetyVests.v6/data.yaml \
-    --cfg models/yolov5s-ghost.yaml \
-    --weights yolov5s.pt \
-    --batch-size 16 \
-    --epochs 100 \
-    --img-size 640 \
-    --device 0 \
-    --box-loss wiou \
-    --hyp data/hyps/hyp.recommand.yaml \
-    --project runs/train \
-    --name yolov5s_ghost_final
+  --data data/SafetyVests.v6/data.yaml \
+  --cfg models/yolov5s-ghost.yaml \
+  --weights yolov5s.pt \
+  --batch-size 16 \
+  --epochs 100 \
+  --img-size 640 \
+  --device 0 \
+  --box-loss wiou \
+  --hyp data/hyps/hyp.recommend.yaml \
+  --project runs/train \
+  --name yolov5s_ghost_final
 ```
 
 **PowerShell格式:**
+
 ```powershell
 # Windows PowerShell 用户
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --box-loss wiou --hyp data/hyps/hyp.recommand.yaml --project runs/train --name yolov5s_ghost_final
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --batch-size 16 --epochs 100 --img-size 640 --device 0 --box-loss wiou --hyp data/hyps/hyp.recommend.yaml --project runs/train --name yolov5s_ghost_final
 ```
 
 ### 训练参数说明
 
 #### 新增参数
 
-| 参数 | 选项 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--box-loss` | `ciou`, `wiou` | `ciou` | 边界框损失函数类型 |
-| `--hyp` | 超参数文件路径 | 内置默认值 | 自定义超参数配置文件 |
+| 参数         | 选项           | 默认值     | 说明                 |
+| ------------ | -------------- | ---------- | -------------------- |
+| `--box-loss` | `ciou`, `wiou` | `ciou`     | 边界框损失函数类型   |
+| `--hyp`      | 超参数文件路径 | 内置默认值 | 自定义超参数配置文件 |
 
 #### 推荐参数组合
 
 **高精度训练:**
+
 ```bash
 --cfg models/yolov5s.yaml --epochs 200 --batch-size 32
 ```
 
 **轻量化训练:**
+
 ```bash
 --cfg models/yolov5s-ghost_1.yaml --epochs 150 --batch-size 16
 ```
 
 **平衡性能训练（推荐）:**
+
 ```bash
---cfg models/yolov5s-ghost_12.yaml --box-loss wiou --hyp data/hyps/hyp.recommand.yaml --epochs 100 --batch-size 16
+--cfg models/yolov5s-ghost_12.yaml --box-loss wiou --hyp data/hyps/hyp.recommend.yaml --epochs 100 --batch-size 16
 ```
 
 ### 恢复训练
@@ -576,46 +592,47 @@ python val.py --weights runs/train/yolov5s_ghost_final/weights/best.pt --data da
 
 ### 主要命令行参数
 
-| 参数 | 默认值 | 描述 |
-|------|--------|------|
-| `--weights` | `yolov5s.pt` | 模型权重路径 |
-| `--source` | `data/images` | 输入源路径 |
-| `--img-size` | `640` | 推理图像大小 |
-| `--conf-thres` | `0.25` | 置信度阈值 |
-| `--iou-thres` | `0.45` | NMS IoU 阈值 |
-| `--device` | `''` | 设备 (cpu, 0, 1, ...) |
-| `--save-txt` | `False` | 保存结果到 txt |
-| `--save-conf` | `False` | 保存置信度到 txt |
-| `--save-crop` | `False` | 保存检测目标裁剪图像 |
-| `--project` | `runs/detect` | 结果保存项目目录 |
-| `--name` | `exp` | 结果保存实验名称 |
+| 参数           | 默认值        | 描述                  |
+| -------------- | ------------- | --------------------- |
+| `--weights`    | `yolov5s.pt`  | 模型权重路径          |
+| `--source`     | `data/images` | 输入源路径            |
+| `--img-size`   | `640`         | 推理图像大小          |
+| `--conf-thres` | `0.25`        | 置信度阈值            |
+| `--iou-thres`  | `0.45`        | NMS IoU 阈值          |
+| `--device`     | `''`          | 设备 (cpu, 0, 1, ...) |
+| `--save-txt`   | `False`       | 保存结果到 txt        |
+| `--save-conf`  | `False`       | 保存置信度到 txt      |
+| `--save-crop`  | `False`       | 保存检测目标裁剪图像  |
+| `--project`    | `runs/detect` | 结果保存项目目录      |
+| `--name`       | `exp`         | 结果保存实验名称      |
 
 ### 训练参数（新增）
 
-| 参数 | 选项 | 默认值 | 描述 |
-|------|------|--------|------|
-| `--cfg` | 模型配置文件 | - | 选择不同的模型架构 |
-| `--box-loss` | `ciou`, `wiou` | `ciou` | 边界框损失函数类型 |
-| `--hyp` | 超参数文件路径 | 内置默认 | 自定义超参数配置 |
+| 参数         | 选项           | 默认值   | 描述               |
+| ------------ | -------------- | -------- | ------------------ |
+| `--cfg`      | 模型配置文件   | -        | 选择不同的模型架构 |
+| `--box-loss` | `ciou`, `wiou` | `ciou`   | 边界框损失函数类型 |
+| `--hyp`      | 超参数文件路径 | 内置默认 | 自定义超参数配置   |
 
 ### 模型配置选择
 
-| 配置文件 | 架构特点 | 适用场景 |
-|----------|----------|----------|
-| `models/yolov5s.yaml` | 原始基线 | 高精度需求 |
-| `models/yolov5s-ghost_1.yaml` | Ghost轻量化 | 基础优化 |
-| `models/yolov5s-ghost_2.yaml` | CA注意力 | 精度增强 |
-| `models/yolov5s-ghost_12.yaml` | Ghost+CA | 平衡性能 |
-| `models/yolov5s-ghost.yaml` | 最终方案 | 生产推荐 |
+| 配置文件                       | 架构特点    | 适用场景   |
+| ------------------------------ | ----------- | ---------- |
+| `models/yolov5s.yaml`          | 原始基线    | 高精度需求 |
+| `models/yolov5s-ghost_1.yaml`  | Ghost轻量化 | 基础优化   |
+| `models/yolov5s-ghost_2.yaml`  | CA注意力    | 精度增强   |
+| `models/yolov5s-ghost_12.yaml` | Ghost+CA    | 平衡性能   |
+| `models/yolov5s-ghost.yaml`    | 最终方案    | 生产推荐   |
 
 ### 输出格式
 
 检测结果保存在指定的项目目录下：
+
 - **图像结果**: 标注了检测框的原图像
 - **文本结果**: 每张图片对应的 `.txt` 文件，包含检测框坐标和置信度
 - **裁剪图像**: `--save-crop` 选项保存检测到的目标区域
 
-##  项目结构
+## 项目结构
 
 ```
 yolov5_ghost/
@@ -626,7 +643,7 @@ yolov5_ghost/
 │   │   ├── test/          # 测试集
 │   │   └── data.yaml      # 数据集配置
 │   └── hyps/              # 超参数配置
-│       ├── hyp.recommand.yaml  # 推荐超参数配置 ✨
+│       ├── hyp.recommend.yaml  # 推荐超参数配置 ✨
 │       └── hyp.*.yaml     # 其他超参数配置
 ├── models/                 # 模型配置文件
 │   ├── yolov5s.yaml       # YOLOv5s 原始配置（基线）
@@ -672,55 +689,61 @@ yolov5_ghost/
 ### 🔧 核心修改文件
 
 #### 1. 模型配置文件（新增多个版本）
+
 - **models/yolov5s-ghost_1.yaml**: 仅包含Ghost模块的轻量化版本
 - **models/yolov5s-ghost_2.yaml**: 仅包含CA注意力机制的版本
 - **models/yolov5s-ghost_12.yaml**: 同时包含Ghost模块和CA注意力机制
-- **models/yolov5s-ghost.yaml**: 最终推荐方案（等同于_12版本）
+- **models/yolov5s-ghost.yaml**: 最终推荐方案（等同于\_12版本）
 
 #### 2. models/common.py (扩展)
+
 包含完整的轻量化模块实现：
+
 - `GhostConv`: 实现 Ghost 卷积操作
 - `GhostBottleneck`: Ghost 瓶颈结构
 - `C3Ghost`: 基于 Ghost Bottleneck 的 C3 模块
 - `CoordAtt`: 坐标注意力机制模块
 
 #### 3. utils/loss.py (修改)
+
 - 添加了完整的 `WIoU` 损失函数实现
 - 支持在训练时通过 `--box-loss wiou` 参数启用
 
 #### 4. train.py (修改)
+
 - 新增 `--box-loss` 参数支持CIoU和WIoU损失函数选择
 - 完善超参数文件支持
 
-#### 5. data/hyps/hyp.recommand.yaml (新增)
+#### 5. data/hyps/hyp.recommend.yaml (新增)
+
 - 针对Ghost模型优化的推荐超参数配置
 - 包含数据增强、学习率等优化参数
 
 #### 3. 主干网络架构对比
 
-| 层级 | 原始 YOLOv5s | Ghost_1 | Ghost_2 | Ghost_12/Final | 说明 |
-|------|---------------|---------|---------|----------------|------|
-| P1/2 | Conv | GhostConv | Conv | GhostConv | 第一层卷积 |
-| P2/4 | Conv | GhostConv | Conv | GhostConv | 第二层卷积 |
-| CSP1 | C3 | C3Ghost | C3 | C3Ghost | 第一个 CSP 模块 |
-| CA1 | - | - | CoordAtt | CoordAtt | 第一个注意力层 |
-| P3/8 | Conv | GhostConv | Conv | GhostConv | 第三层卷积 |
-| CSP2 | C3 | C3Ghost | C3 | C3Ghost | 第二个 CSP 模块 |
-| CA2 | - | - | CoordAtt | CoordAtt | 第二个注意力层 |
-| P4/16 | Conv | GhostConv | Conv | GhostConv | 第四层卷积 |
-| CSP3 | C3 | C3Ghost | C3 | C3Ghost | 第三个 CSP 模块 |
-| P5/32 | Conv | GhostConv | Conv | GhostConv | 第五层卷积 |
-| CSP4 | C3 | C3Ghost | C3 | C3Ghost | 第四个 CSP 模块 |
-| SPPF | SPPF | SPPF | SPPF | SPPF | 空间金字塔池化（保持不变） |
-| CA3 | - | - | CoordAtt | CoordAtt | 第三个注意力层 |
-| **Head CA** | - | - | CoordAtt×3 | CoordAtt×3 | 检测头注意力 |
+| 层级        | 原始 YOLOv5s | Ghost_1   | Ghost_2    | Ghost_12/Final | 说明                       |
+| ----------- | ------------ | --------- | ---------- | -------------- | -------------------------- |
+| P1/2        | Conv         | GhostConv | Conv       | GhostConv      | 第一层卷积                 |
+| P2/4        | Conv         | GhostConv | Conv       | GhostConv      | 第二层卷积                 |
+| CSP1        | C3           | C3Ghost   | C3         | C3Ghost        | 第一个 CSP 模块            |
+| CA1         | -            | -         | CoordAtt   | CoordAtt       | 第一个注意力层             |
+| P3/8        | Conv         | GhostConv | Conv       | GhostConv      | 第三层卷积                 |
+| CSP2        | C3           | C3Ghost   | C3         | C3Ghost        | 第二个 CSP 模块            |
+| CA2         | -            | -         | CoordAtt   | CoordAtt       | 第二个注意力层             |
+| P4/16       | Conv         | GhostConv | Conv       | GhostConv      | 第四层卷积                 |
+| CSP3        | C3           | C3Ghost   | C3         | C3Ghost        | 第三个 CSP 模块            |
+| P5/32       | Conv         | GhostConv | Conv       | GhostConv      | 第五层卷积                 |
+| CSP4        | C3           | C3Ghost   | C3         | C3Ghost        | 第四个 CSP 模块            |
+| SPPF        | SPPF         | SPPF      | SPPF       | SPPF           | 空间金字塔池化（保持不变） |
+| CA3         | -            | -         | CoordAtt   | CoordAtt       | 第三个注意力层             |
+| **Head CA** | -            | -         | CoordAtt×3 | CoordAtt×3     | 检测头注意力               |
 
 #### 4. 损失函数对比
 
-| 损失函数 | 特点 | 数学原理 | 适用场景 |
-|----------|------|----------|----------|
-| **CIoU** | 考虑距离、重叠、比例 | Complete IoU | 一般目标检测 |
-| **WIoU** | 动态权重聚焦 | Wise IoU with focus | 小目标、遮挡检测 |
+| 损失函数 | 特点                 | 数学原理            | 适用场景         |
+| -------- | -------------------- | ------------------- | ---------------- |
+| **CIoU** | 考虑距离、重叠、比例 | Complete IoU        | 一般目标检测     |
+| **WIoU** | 动态权重聚焦         | Wise IoU with focus | 小目标、遮挡检测 |
 
 ### 超参数调优
 
@@ -729,13 +752,15 @@ yolov5_ghost/
 > 🎯 **重要**: 所有模型均采用默认的推荐超参数配置，确保公平对比
 
 **所有模型统一配置:**
+
 - 学习率: 0.01 (推荐配置默认值)
 - 训练轮次: 100 (标准对比轮次)
 - 批次大小: 16 (统一批次大小)
 - 数据增强: 推荐配置 (默认启用)
-- 超参数文件: `hyp.recommand.yaml` (自动使用)
+- 超参数文件: `hyp.recommend.yaml` (自动使用)
 
 **模型差异仅在于架构:**
+
 - **YOLOv5s**: 原始基线架构
 - **Ghost_1**: 仅Ghost轻量化模块
 - **Ghost_2**: 仅CA注意力机制
@@ -744,17 +769,20 @@ yolov5_ghost/
 这样可以纯粹对比不同架构的性能差异，排除超参数影响。
 
 #### WIoU损失函数使用建议
+
 ```bash
 # 适合使用WIoU的场景
---box-loss wiou  # 当遇到以下情况时推荐使用：
+--box-loss wiou # 当遇到以下情况时推荐使用：
 # 1. 小目标较多的场景
-# 2. 目标密集重叠的场景  
+# 2. 目标密集重叠的场景
 # 3. 背景复杂的场景
 # 4. 训练收敛困难时
 ```
 
 #### 推荐超参数文件说明
-`data/hyps/hyp.recommand.yaml` 包含：
+
+`data/hyps/hyp.recommend.yaml` 包含：
+
 - 优化的学习率调度
 - 增强的数据增强参数
 - 适配Ghost模型的权重衰减
@@ -800,23 +828,26 @@ python export.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --include
 ### 性能调优技巧
 
 #### 推理优化
+
 1. **批处理**: 对于批量图像处理，使用更大的 batch size
 2. **输入尺寸**: 根据精度需求调整输入图像尺寸（416, 512, 640）
 3. **后处理**: 调整 NMS 阈值平衡速度和精度
-4. **模型选择**: 
+4. **模型选择**:
    - 速度优先: 选择 Ghost_1
-   - 精度优先: 选择 Ghost_2  
+   - 精度优先: 选择 Ghost_2
    - 平衡性能: 选择 Ghost_12
 
 #### 内存优化
+
 1. **半精度推理**: 使用 FP16 减少内存占用
 2. **模型剪枝**: 进一步减少模型大小
 3. **量化**: 使用 INT8 量化提升推理速度
 4. **架构选择**: Ghost系列模型天然内存友好
 
 #### 训练优化
+
 1. **损失函数**: 小目标多时使用 WIoU 损失
-2. **数据增强**: 使用推荐超参数配置  
+2. **数据增强**: 使用推荐超参数配置
 3. **学习率**: 根据模型架构调整学习率策略
 4. **训练轮次**: Ghost模型建议更多训练轮次
 
@@ -824,33 +855,34 @@ python export.py --weights runs/train/yolov5s_ghost_12/weights/best.pt --include
 
 ### 模型架构对比
 
-| 指标 | YOLOv5s | Ghost_1 | Ghost_2 | Ghost_12 | 说明 |
-|------|---------|---------|---------|----------|------|
-| **Ghost模块** | ❌ | ✅ | ❌ | ✅ | 轻量化卷积 |
-| **CA注意力** | ❌ | ❌ | ✅ | ✅ | 坐标注意力 |
-| **预期参数量** | 7.2M | ~5.8M | ~7.5M | ~6.0M | 理论估算 |
-| **预期计算量** | 16.5G | ~10.3G | ~17.2G | ~11.0G | 理论估算 |
-| **适用场景** | 基线 | 轻量化 | 精度优先 | 平衡性能 | 部署建议 |
+| 指标           | YOLOv5s | Ghost_1 | Ghost_2  | Ghost_12 | 说明       |
+| -------------- | ------- | ------- | -------- | -------- | ---------- |
+| **Ghost模块**  | ❌      | ✅      | ❌       | ✅       | 轻量化卷积 |
+| **CA注意力**   | ❌      | ❌      | ✅       | ✅       | 坐标注意力 |
+| **预期参数量** | 7.2M    | ~5.8M   | ~7.5M    | ~6.0M    | 理论估算   |
+| **预期计算量** | 16.5G   | ~10.3G  | ~17.2G   | ~11.0G   | 理论估算   |
+| **适用场景**   | 基线    | 轻量化  | 精度优先 | 平衡性能 | 部署建议   |
 
 ### 损失函数对比
 
-| 损失函数 | 特点 | 优势 | 适用场景 |
-|----------|------|------|----------|
-| **CIoU** | 完整IoU | 训练稳定 | 一般目标检测 |
+| 损失函数 | 特点     | 优势       | 适用场景        |
+| -------- | -------- | ---------- | --------------- |
+| **CIoU** | 完整IoU  | 训练稳定   | 一般目标检测    |
 | **WIoU** | 智能权重 | 聚焦难样本 | 小目标/密集检测 |
 
 ### 超参数配置对比
 
-| 配置 | 特点 | 数据增强强度 | 适用模型 |
-|------|------|--------------|----------|
-| **默认超参数** | 通用配置 | 标准 | 所有模型 |
-| **推荐超参数** | 优化配置 | 增强 | Ghost系列 |
+| 配置           | 特点     | 数据增强强度 | 适用模型  |
+| -------------- | -------- | ------------ | --------- |
+| **默认超参数** | 通用配置 | 标准         | 所有模型  |
+| **推荐超参数** | 优化配置 | 增强         | Ghost系列 |
 
-*注：具体性能数据将在训练完成后更新*
+_注：具体性能数据将在训练完成后更新_
 
 ## 🔧 配置文件
 
 ### 环境配置 (environment.yml)
+
 ```yaml
 name: yolov5_ghost
 channels:
@@ -867,72 +899,73 @@ dependencies:
 ```
 
 ### 数据集配置 (data.yaml)
+
 ```yaml
-path: ./  # dataset root dir
+path: ./ # dataset root dir
 train: data/SafetyVests.v6/train/images
 val: data/SafetyVests.v6/valid/images
 test: data/SafetyVests.v6/test/images
 
-nc: 2  # number of classes
-names: ['NO-Safety Vest', 'Safety Vest']  # class names
+nc: 2 # number of classes
+names: ["NO-Safety Vest", "Safety Vest"] # class names
 ```
 
 ### 模型配置对比
 
 #### 原始 YOLOv5s (models/yolov5s.yaml)
+
 ```yaml
 # YOLOv5 v6.0 backbone
-backbone:
-  [
-    [-1, 1, Conv, [64, 6, 2, 2]],        # 0-P1/2
-    [-1, 1, Conv, [128, 3, 2]],          # 1-P2/4
-    [-1, 3, C3, [128]],                  # 2
-    [-1, 1, Conv, [256, 3, 2]],          # 3-P3/8
-    [-1, 6, C3, [256]],                  # 4
-    [-1, 1, Conv, [512, 3, 2]],          # 5-P4/16
-    [-1, 9, C3, [512]],                  # 6
-    [-1, 1, Conv, [1024, 3, 2]],         # 7-P5/32
-    [-1, 3, C3, [1024]],                 # 8
-    [-1, 1, SPPF, [1024, 5]],            # 9
+backbone: [
+    [-1, 1, Conv, [64, 6, 2, 2]], # 0-P1/2
+    [-1, 1, Conv, [128, 3, 2]], # 1-P2/4
+    [-1, 3, C3, [128]], # 2
+    [-1, 1, Conv, [256, 3, 2]], # 3-P3/8
+    [-1, 6, C3, [256]], # 4
+    [-1, 1, Conv, [512, 3, 2]], # 5-P4/16
+    [-1, 9, C3, [512]], # 6
+    [-1, 1, Conv, [1024, 3, 2]], # 7-P5/32
+    [-1, 3, C3, [1024]], # 8
+    [-1, 1, SPPF, [1024, 5]], # 9
   ]
 ```
 
-#### YOLOv5s-Ghost 模型变体对比 (models/yolov5s-ghost*.yaml) ✨
+#### YOLOv5s-Ghost 模型变体对比 (models/yolov5s-ghost\*.yaml) ✨
 
 **Ghost_1 版本:**
+
 ```yaml
 # 仅包含Ghost模块的轻量化版本
-backbone:
-  [
-    [-1, 1, GhostConv, [64, 6, 2, 2]],   # Ghost卷积替换
-    [-1, 1, GhostConv, [128, 3, 2]],     # Ghost卷积替换
-    [-1, 3, C3Ghost, [128]],             # Ghost C3替换
+backbone: [
+    [-1, 1, GhostConv, [64, 6, 2, 2]], # Ghost卷积替换
+    [-1, 1, GhostConv, [128, 3, 2]], # Ghost卷积替换
+    [-1, 3, C3Ghost, [128]], # Ghost C3替换
     # ... 其他层使用Ghost模块
   ]
 ```
 
 **Ghost_2 版本:**
+
 ```yaml
 # 仅包含CA注意力机制的版本
-backbone:
-  [
-    [-1, 1, Conv, [64, 6, 2, 2]],        # 保持标准卷积
-    [-1, 1, Conv, [128, 3, 2]],          # 保持标准卷积
-    [-1, 3, C3, [128]],                  # 保持标准C3
-    [-1, 1, CoordAtt, [256]],            # 添加CA注意力 ✨
+backbone: [
+    [-1, 1, Conv, [64, 6, 2, 2]], # 保持标准卷积
+    [-1, 1, Conv, [128, 3, 2]], # 保持标准卷积
+    [-1, 3, C3, [128]], # 保持标准C3
+    [-1, 1, CoordAtt, [256]], # 添加CA注意力 ✨
     # ... 在关键位置添加注意力机制
   ]
 ```
 
 **Ghost_12 版本（推荐）:**
+
 ```yaml
 # 同时包含Ghost模块和CA注意力机制
-backbone:
-  [
-    [-1, 1, GhostConv, [64, 6, 2, 2]],   # Ghost卷积
-    [-1, 1, GhostConv, [128, 3, 2]],     # Ghost卷积
-    [-1, 3, C3Ghost, [128]],             # Ghost C3
-    [-1, 1, CoordAtt, [256]],            # CA注意力 ✨
+backbone: [
+    [-1, 1, GhostConv, [64, 6, 2, 2]], # Ghost卷积
+    [-1, 1, GhostConv, [128, 3, 2]], # Ghost卷积
+    [-1, 3, C3Ghost, [128]], # Ghost C3
+    [-1, 1, CoordAtt, [256]], # CA注意力 ✨
     # ... 结合两种优化技术
   ]
 ```
@@ -943,11 +976,12 @@ backbone:
 class WIoU:
     """
     Wise-IoU loss function implementation
-    Paper: https://arxiv.org/abs/2301.10051
+    Paper: https://arxiv.org/abs/2301.10051.
     """
+
     def __init__(self, pred, target, eps=1e-7, alpha=2.0, beta=4.0):
         self.eps = eps
-        self.alpha = alpha  
+        self.alpha = alpha
         self.beta = beta
         self.pred = pred
         self.target = target
@@ -955,16 +989,16 @@ class WIoU:
 
     @property
     def wiou(self):
-        """Calculate WIoU loss with dynamic focusing mechanism"""
+        """Calculate WIoU loss with dynamic focusing mechanism."""
         # 计算中心点距离
         dist = torch.sum((self.pred[:, :2] - self.target[:, :2]) ** 2, dim=1)
-        
+
         # 计算包围框尺寸
         # ... 详细实现见源码
-        
+
         # R_WIoU 计算
-        r_wiou = torch.exp(dist / (cw ** 2 + ch ** 2 + self.eps))
-        
+        r_wiou = torch.exp(dist / (cw**2 + ch**2 + self.eps))
+
         # 最终WIoU损失计算
         beta = (self.iou.detach() / self.alpha).pow(self.beta)
         loss_wiou = r_wiou * (1 - self.iou) * beta
@@ -977,19 +1011,20 @@ class WIoU:
 class CoordAtt(nn.Module):
     """
     Coordinate Attention mechanism
-    Paper: Coordinate Attention for Efficient Mobile Network Design
+    Paper: Coordinate Attention for Efficient Mobile Network Design.
     """
+
     def __init__(self, inp, oup, reduction=32):
-        super(CoordAtt, self).__init__()
+        super().__init__()
         # X和Y方向的池化
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
-        
+
         mip = max(8, inp // reduction)
         self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
         self.bn1 = nn.BatchNorm2d(mip)
         self.act = h_swish()
-        
+
         # 分别处理H和W方向的注意力
         self.conv_h = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
         self.conv_w = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
@@ -997,36 +1032,36 @@ class CoordAtt(nn.Module):
     def forward(self, x):
         identity = x
         n, c, h, w = x.size()
-        
+
         # 分别在H和W方向进行池化
         x_h = self.pool_h(x)
         x_w = self.pool_w(x).permute(0, 1, 3, 2)
-        
+
         # 连接和处理
         y = torch.cat([x_h, x_w], dim=2)
         y = self.conv1(y)
         y = self.bn1(y)
         y = self.act(y)
-        
+
         # 分离H和W方向的注意力
         x_h, x_w = torch.split(y, [h, w], dim=2)
         x_w = x_w.permute(0, 1, 3, 2)
-        
+
         # 生成注意力权重
         a_h = self.conv_h(x_h).sigmoid()
         a_w = self.conv_w(x_w).sigmoid()
-        
+
         # 应用注意力
         out = identity * a_w * a_h
         return out
 ```
 
-### 推荐超参数配置 (data/hyps/hyp.recommand.yaml) ✨
+### 推荐超参数配置 (data/hyps/hyp.recommend.yaml) ✨
 
 ```yaml
 # 针对Ghost模型优化的超参数配置
-lr0: 0.01  # 初始学习率
-lrf: 0.1   # 最终学习率比例
+lr0: 0.01 # 初始学习率
+lrf: 0.1 # 最终学习率比例
 momentum: 0.937
 weight_decay: 0.0005
 warmup_epochs: 3.0
@@ -1034,41 +1069,45 @@ warmup_momentum: 0.8
 warmup_bias_lr: 0.1
 
 # 损失函数权重
-box: 0.05  # 边界框损失权重
-cls: 0.5   # 分类损失权重
-obj: 1.0   # 目标检测损失权重
+box: 0.05 # 边界框损失权重
+cls: 0.5 # 分类损失权重
+obj: 1.0 # 目标检测损失权重
 
 # 数据增强优化（针对安全背心检测）
-hsv_h: 0.015    # 色调增强
-hsv_s: 0.7      # 饱和度增强  
-hsv_v: 0.4      # 亮度增强
-degrees: 10.0   # 旋转角度（增加）
-translate: 0.1  # 平移
-scale: 0.5      # 缩放
-shear: 2.0      # 剪切变换（增加）
+hsv_h: 0.015 # 色调增强
+hsv_s: 0.7 # 饱和度增强
+hsv_v: 0.4 # 亮度增强
+degrees: 10.0 # 旋转角度（增加）
+translate: 0.1 # 平移
+scale: 0.5 # 缩放
+shear: 2.0 # 剪切变换（增加）
 perspective: 0.0 # 透视变换
 ```
 
 ### 使用说明
 
 #### 模型选择参数
+
 - `--cfg models/yolov5s.yaml`: 使用原始 YOLOv5s（基线）
 - `--cfg models/yolov5s-ghost_1.yaml`: 使用Ghost轻量化版本
-- `--cfg models/yolov5s-ghost_2.yaml`: 使用CA注意力版本  
+- `--cfg models/yolov5s-ghost_2.yaml`: 使用CA注意力版本
 - `--cfg models/yolov5s-ghost_12.yaml`: 使用Ghost+CA组合版本
 - `--cfg models/yolov5s-ghost.yaml`: 使用最终推荐版本
 
 #### 损失函数选择参数
+
 - `--box-loss ciou`: 使用CIoU损失函数（默认）
 - `--box-loss wiou`: 使用WIoU损失函数（推荐小目标检测）
 
 #### 超参数配置参数
-- `--hyp data/hyps/hyp.recommand.yaml`: 使用推荐超参数（Ghost模型优化）
+
+- `--hyp data/hyps/hyp.recommend.yaml`: 使用推荐超参数（Ghost模型优化）
 
 #### 完整命令示例
+
 ```bash
 # 最优配置训练
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --box-loss wiou --hyp data/hyps/hyp.recommand.yaml
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --box-loss wiou --hyp data/hyps/hyp.recommend.yaml
 
 # 基线对比训练
 python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s.yaml --weights yolov5s.pt
@@ -1081,6 +1120,7 @@ python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_
 ```
 
 #### 快速开始 (单行命令)
+
 ```bash
 # 训练基线模型
 python train.py --cfg models/yolov5s.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt
@@ -1095,10 +1135,11 @@ python train.py --cfg models/yolov5s-ghost_2.yaml --data data/SafetyVests.v6/dat
 python train.py --cfg models/yolov5s-ghost_12.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt
 
 # 训练最终推荐模型（完整优化）
-python train.py --cfg models/yolov5s-ghost.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --box-loss wiou --hyp data/hyps/hyp.recommand.yaml
+python train.py --cfg models/yolov5s-ghost.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --box-loss wiou --hyp data/hyps/hyp.recommend.yaml
 ```
 
 #### 完整工作流程
+
 ```bash
 # 1. 训练基线模型（对比用）
 python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s.yaml --weights yolov5s.pt --epochs 100 --name baseline
@@ -1113,7 +1154,7 @@ python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_
 python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost_12.yaml --weights yolov5s.pt --epochs 100 --name ghost_12
 
 # 5. 训练最终优化模型
-python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --epochs 100 --box-loss wiou --hyp data/hyps/hyp.recommand.yaml --name final
+python train.py --data data/SafetyVests.v6/data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --epochs 100 --box-loss wiou --hyp data/hyps/hyp.recommend.yaml --name final
 
 # 6. 验证所有模型
 python val.py --weights runs/train/baseline/weights/best.pt --data data/SafetyVests.v6/data.yaml
@@ -1132,12 +1173,13 @@ python export.py --weights runs/train/final/weights/best.pt --include onnx --img
 > 💡 **提示**: 所有命令都采用跨平台兼容格式，可在Windows、Linux、macOS上直接运行
 
 ### 未来改进方向
+
 🚀 **进一步轻量化**: 结合知识蒸馏和模型剪枝技术  
 🚀 **自动化调优**: 自动搜索最优的Ghost和CA模块配置  
 🚀 **多任务扩展**: 扩展到其他YOLO任务（分割、分类、姿态估计）  
 🚀 **硬件优化**: 针对特定硬件平台的专门优化（ARM、NPU等）  
 🚀 **新技术融合**: 集成更多SOTA轻量化技术（MobileNet、EfficientNet等）  
-🚀 **端到端优化**: 从数据预处理到后处理的全链路优化  
+🚀 **端到端优化**: 从数据预处理到后处理的全链路优化
 
 ## 🎬 视频流检测
 
@@ -1173,25 +1215,29 @@ python tools/video.py --weights models_trained/Ghost_e10_0626/weights/best.pt --
 ### v1.1.0 (2025-06-27)
 
 #### 🔧 超参数优化
-- **默认超参数配置更新**: 将 `hyp.recommand.yaml` 设置为默认的数据增强配置
+
+- **默认超参数配置更新**: 将 `hyp.recommend.yaml` 设置为默认的数据增强配置
   - 主训练脚本 `train.py` 现在默认使用优化的超参数配置
   - 分割训练脚本 `segment/train.py` 同步更新默认配置
   - 无需手动指定 `--hyp` 参数即可享受优化的训练效果
 
 #### 📈 性能改进
+
 - **增强的数据增强**: 包含更优的旋转、剪切、混合等增强参数
 - **训练稳定性**: 针对 Ghost 模型优化的学习率和权重衰减配置
 - **小目标检测**: 改进的 HSV 和几何变换参数，提升小目标检测性能
 
 #### 🚀 使用便利性
+
 - **简化命令**: 训练命令更加简洁，默认配置即为最优
 - **向后兼容**: 仍支持通过 `--hyp` 参数指定自定义超参数文件
 - **一致性**: 主训练和分割训练使用相同的优化配置
 
 #### 示例更新
+
 ```bash
 # 之前需要手动指定
-python train.py --data data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --hyp data/hyps/hyp.recommand.yaml
+python train.py --data data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt --hyp data/hyps/hyp.recommend.yaml
 
 # 现在可以直接使用（自动使用优化配置）
 python train.py --data data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov5s.pt
@@ -1200,6 +1246,7 @@ python train.py --data data.yaml --cfg models/yolov5s-ghost.yaml --weights yolov
 ### v1.0.0 (2025-06-25)
 
 #### 🎯 初始发布
+
 - **Ghost 轻量化模块**: 基于 GhostNet 的模型轻量化
 - **CA 注意力机制**: 坐标注意力增强特征表达
 - **WIoU 损失函数**: 智能 IoU 损失优化训练

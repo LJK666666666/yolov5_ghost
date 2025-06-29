@@ -135,9 +135,9 @@ class ComputeLoss:
         self.nl = m.nl  # number of layers
         self.anchors = m.anchors
         self.device = device
-        
+
         # Box loss type selection
-        self.box_loss = getattr(opt, 'box_loss', 'ciou').lower() if opt else 'ciou'
+        self.box_loss = getattr(opt, "box_loss", "ciou").lower() if opt else "ciou"
 
     def __call__(self, p, targets):  # predictions, targets
         """Performs forward pass, calculating class, box, and object loss for given predictions and targets."""
@@ -159,14 +159,14 @@ class ComputeLoss:
                 pxy = pxy.sigmoid() * 2 - 0.5
                 pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                
+
                 # Bbox loss - choose between CIoU and WIoU
-                if self.box_loss == 'wiou':
+                if self.box_loss == "wiou":
                     loss_wiou = WIoU(pbox, tbox[i])
                     lbox += loss_wiou.wiou
                     # For objectness loss, we still need IoU values
-                    iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  
-                elif self.box_loss == 'ciou':
+                    iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()
+                elif self.box_loss == "ciou":
                     iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                     lbox += (1.0 - iou).mean()  # iou loss
                 else:
@@ -268,6 +268,7 @@ class ComputeLoss:
 
         return tcls, tbox, indices, anch
 
+
 # =====================================================================================
 # 以下为WIoU损失函数代码
 # =====================================================================================
@@ -276,8 +277,9 @@ class ComputeLoss:
 class WIoU:
     """
     Wise-IoU loss function.
-    https://arxiv.org/abs/2301.10051
+    https://arxiv.org/abs/2301.10051.
     """
+
     def __init__(self, pred, target, eps=1e-7, alpha=2.0, beta=4.0):
         """Initialize WIoU loss with prediction and target boxes."""
         self.eps = eps
@@ -294,16 +296,16 @@ class WIoU:
         # Ensure pred and target have same shape
         pred = self.pred
         target = self.target
-        
+
         # Calculate the distance between the center points of the two bounding boxes
         dist = torch.sum((pred[:, :2] - target[:, :2]) ** 2, dim=1)
-        
+
         # Convert from center format (x, y, w, h) to corner format for enclosing box calculation
         pred_x1 = pred[:, 0] - pred[:, 2] / 2
         pred_y1 = pred[:, 1] - pred[:, 3] / 2
         pred_x2 = pred[:, 0] + pred[:, 2] / 2
         pred_y2 = pred[:, 1] + pred[:, 3] / 2
-        
+
         target_x1 = target[:, 0] - target[:, 2] / 2
         target_y1 = target[:, 1] - target[:, 3] / 2
         target_x2 = target[:, 0] + target[:, 2] / 2
@@ -312,9 +314,9 @@ class WIoU:
         # Enclosing box dimensions
         cw = torch.max(pred_x2, target_x2) - torch.min(pred_x1, target_x1)
         ch = torch.max(pred_y2, target_y2) - torch.min(pred_y1, target_y1)
-        
+
         # R_WIoU calculation according to paper formula (3.14)
-        r_wiou = torch.exp(dist / (cw ** 2 + ch ** 2 + self.eps))
+        r_wiou = torch.exp(dist / (cw**2 + ch**2 + self.eps))
 
         # Final WIoU loss calculation according to paper formula (3.13)
         # Use a detachable beta to construct the focusing factor

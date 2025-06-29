@@ -353,7 +353,17 @@ class Focus(nn.Module):
 
     def forward(self, x):
         """Processes input through Focus mechanism, reshaping (b,c,w,h) to (b,4c,w/2,h/2) then applies convolution."""
-        return self.conv(torch.cat((x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]), 1))
+        return self.conv(
+            torch.cat(
+                (
+                    x[..., ::2, ::2],
+                    x[..., 1::2, ::2],
+                    x[..., ::2, 1::2],
+                    x[..., 1::2, 1::2],
+                ),
+                1,
+            )
+        )
         # return self.conv(self.contract(x))
 
 
@@ -459,7 +469,15 @@ class Concat(nn.Module):
 class DetectMultiBackend(nn.Module):
     """YOLOv5 MultiBackend class for inference on various backends including PyTorch, ONNX, TensorRT, and more."""
 
-    def __init__(self, weights="yolov5s.pt", device=torch.device("cpu"), dnn=False, data=None, fp16=False, fuse=True):
+    def __init__(
+        self,
+        weights="yolov5s.pt",
+        device=torch.device("cpu"),
+        dnn=False,
+        data=None,
+        fp16=False,
+        fuse=True,
+    ):
         """Initializes DetectMultiBackend with support for various inference backends, including PyTorch and ONNX."""
         #   PyTorch:              weights = *.pt
         #   TorchScript:                    *.torchscript
@@ -473,11 +491,28 @@ class DetectMultiBackend(nn.Module):
         #   TensorFlow Lite:                *.tflite
         #   TensorFlow Edge TPU:            *_edgetpu.tflite
         #   PaddlePaddle:                   *_paddle_model
-        from models.experimental import attempt_download, attempt_load  # scoped to avoid circular import
+        from models.experimental import (
+            attempt_download,
+            attempt_load,
+        )  # scoped to avoid circular import
 
         super().__init__()
         w = str(weights[0] if isinstance(weights, list) else weights)
-        pt, jit, onnx, xml, engine, coreml, saved_model, pb, tflite, edgetpu, tfjs, paddle, triton = self._model_type(w)
+        (
+            pt,
+            jit,
+            onnx,
+            xml,
+            engine,
+            coreml,
+            saved_model,
+            pb,
+            tflite,
+            edgetpu,
+            tfjs,
+            paddle,
+            triton,
+        ) = self._model_type(w)
         fp16 &= pt or jit or onnx or engine or triton  # FP16
         nhwc = coreml or saved_model or pb or tflite or edgetpu  # BHWC formats (vs torch BCWH)
         stride = 32  # default stride
@@ -486,7 +521,12 @@ class DetectMultiBackend(nn.Module):
             w = attempt_download(w)  # download if not local
 
         if pt:  # PyTorch
-            model = attempt_load(weights if isinstance(weights, list) else w, device=device, inplace=True, fuse=fuse)
+            model = attempt_load(
+                weights if isinstance(weights, list) else w,
+                device=device,
+                inplace=True,
+                fuse=fuse,
+            )
             stride = max(int(model.stride.max()), 32)  # model stride
             names = model.module.names if hasattr(model, "module") else model.names  # get class names
             model.half() if fp16 else model.float()
@@ -600,7 +640,10 @@ class DetectMultiBackend(nn.Module):
                 """Wraps a TensorFlow GraphDef for inference, returning a pruned function."""
                 x = tf.compat.v1.wrap_function(lambda: tf.compat.v1.import_graph_def(gd, name=""), [])  # wrapped
                 ge = x.graph.as_graph_element
-                return x.prune(tf.nest.map_structure(ge, inputs), tf.nest.map_structure(ge, outputs))
+                return x.prune(
+                    tf.nest.map_structure(ge, inputs),
+                    tf.nest.map_structure(ge, outputs),
+                )
 
             def gd_outputs(gd):
                 """Generates a sorted list of graph outputs excluding NoOp nodes and inputs, formatted as '<name>:0'."""
@@ -626,9 +669,11 @@ class DetectMultiBackend(nn.Module):
                 )
             if edgetpu:  # TF Edge TPU https://coral.ai/software/#edgetpu-runtime
                 LOGGER.info(f"Loading {w} for TensorFlow Lite Edge TPU inference...")
-                delegate = {"Linux": "libedgetpu.so.1", "Darwin": "libedgetpu.1.dylib", "Windows": "edgetpu.dll"}[
-                    platform.system()
-                ]
+                delegate = {
+                    "Linux": "libedgetpu.so.1",
+                    "Darwin": "libedgetpu.1.dylib",
+                    "Windows": "edgetpu.dll",
+                }[platform.system()]
                 interpreter = Interpreter(model_path=w, experimental_delegates=[load_delegate(delegate)])
             else:  # TFLite
                 LOGGER.info(f"Loading {w} for TensorFlow Lite inference...")
@@ -778,9 +823,21 @@ class DetectMultiBackend(nn.Module):
 
     def warmup(self, imgsz=(1, 3, 640, 640)):
         """Performs a single inference warmup to initialize model weights, accepting an `imgsz` tuple for image size."""
-        warmup_types = self.pt, self.jit, self.onnx, self.engine, self.saved_model, self.pb, self.triton
+        warmup_types = (
+            self.pt,
+            self.jit,
+            self.onnx,
+            self.engine,
+            self.saved_model,
+            self.pb,
+            self.triton,
+        )
         if any(warmup_types) and (self.device.type != "cpu" or self.triton):
-            im = torch.empty(*imgsz, dtype=torch.half if self.fp16 else torch.float, device=self.device)  # input
+            im = torch.empty(
+                *imgsz,
+                dtype=torch.half if self.fp16 else torch.float,
+                device=self.device,
+            )  # input
             for _ in range(2 if self.jit else 1):  #
                 self.forward(im)  # warmup
 
@@ -829,7 +886,12 @@ class AutoShape(nn.Module):
         super().__init__()
         if verbose:
             LOGGER.info("Adding AutoShape... ")
-        copy_attr(self, model, include=("yaml", "nc", "hyp", "names", "stride", "abc"), exclude=())  # copy attributes
+        copy_attr(
+            self,
+            model,
+            include=("yaml", "nc", "hyp", "names", "stride", "abc"),
+            exclude=(),
+        )  # copy attributes
         self.dmb = isinstance(model, DetectMultiBackend)  # DetectMultiBackend() instance
         self.pt = not self.dmb or model.pt  # PyTorch model
         self.model = model.eval()
@@ -885,10 +947,16 @@ class AutoShape(nn.Module):
             for i, im in enumerate(ims):
                 f = f"image{i}"  # filename
                 if isinstance(im, (str, Path)):  # filename or uri
-                    im, f = Image.open(requests.get(im, stream=True).raw if str(im).startswith("http") else im), im
+                    im, f = (
+                        Image.open(requests.get(im, stream=True).raw if str(im).startswith("http") else im),
+                        im,
+                    )
                     im = np.asarray(exif_transpose(im))
                 elif isinstance(im, Image.Image):  # PIL Image
-                    im, f = np.asarray(exif_transpose(im)), getattr(im, "filename", f) or f
+                    im, f = (
+                        np.asarray(exif_transpose(im)),
+                        getattr(im, "filename", f) or f,
+                    )
                 files.append(Path(f).with_suffix(".jpg").name)
                 if im.shape[0] < 5:  # image in CHW
                     im = im.transpose((1, 2, 0))  # reverse dataloader .transpose(2, 0, 1)
@@ -946,7 +1014,16 @@ class Detections:
         self.t = tuple(x.t / self.n * 1e3 for x in times)  # timestamps (ms)
         self.s = tuple(shape)  # inference BCHW shape
 
-    def _run(self, pprint=False, show=False, save=False, crop=False, render=False, labels=True, save_dir=Path("")):
+    def _run(
+        self,
+        pprint=False,
+        show=False,
+        save=False,
+        crop=False,
+        render=False,
+        labels=True,
+        save_dir=Path(""),
+    ):
         """Executes model predictions, displaying and/or saving outputs with optional crops and labels."""
         s, crops = "", []
         for i, (im, pred) in enumerate(zip(self.ims, self.pred)):
@@ -1039,8 +1116,24 @@ class Detections:
         Example: print(results.pandas().xyxy[0]).
         """
         new = copy(self)  # return copy
-        ca = "xmin", "ymin", "xmax", "ymax", "confidence", "class", "name"  # xyxy columns
-        cb = "xcenter", "ycenter", "width", "height", "confidence", "class", "name"  # xywh columns
+        ca = (
+            "xmin",
+            "ymin",
+            "xmax",
+            "ymax",
+            "confidence",
+            "class",
+            "name",
+        )  # xyxy columns
+        cb = (
+            "xcenter",
+            "ycenter",
+            "width",
+            "height",
+            "confidence",
+            "class",
+            "name",
+        )  # xywh columns
         for k, c in zip(["xyxy", "xyxyn", "xywh", "xywhn"], [ca, ca, cb, cb]):
             a = [[x[:5] + [int(x[5]), self.names[int(x[5])]] for x in x.tolist()] for x in getattr(self, k)]  # update
             setattr(new, k, [pd.DataFrame(x, columns=c) for x in a])
@@ -1125,7 +1218,7 @@ class Classify(nn.Module):
 
 # =====================================================================================
 # 以下为CA注意力机制代码
-'''
+"""
 我来详细解释CA注意力机制中每一层的输入维度变化和shape参数的含义。
 
 ## Shape的4个参数含义：
@@ -1193,27 +1286,28 @@ class Classify(nn.Module):
 | 9 | 最终输出 | [N, oup, H, W] + 权重 | [N, oup, H, W] |
 
 这样的设计能够捕获空间位置信息并将其编码到注意力权重中，从而增强特征表示能力。
-'''
+"""
 # =====================================================================================
+
 
 class h_swish(nn.Module):
     """Hard Swish activation function for improved efficiency."""
-    
+
     def __init__(self, inplace=True):
-        super(h_swish, self).__init__()
+        super().__init__()
         self.inplace = inplace
 
     def forward(self, x):
         """Applies Hard Swish activation function."""
-        return x * torch.nn.functional.relu6(x + 3., inplace=self.inplace) / 6.
+        return x * torch.nn.functional.relu6(x + 3.0, inplace=self.inplace) / 6.0
 
 
 class CoordAtt(nn.Module):
     """Coordinate Attention mechanism for enhanced feature representation."""
-    
+
     def __init__(self, inp, oup, reduction=32):
         """Initialize Coordinate Attention with input channels, output channels and reduction ratio."""
-        super(CoordAtt, self).__init__()
+        super().__init__()
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
 
@@ -1222,15 +1316,14 @@ class CoordAtt(nn.Module):
         self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
         self.bn1 = nn.BatchNorm2d(mip)
         self.act = h_swish()
-        
+
         self.conv_h = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
         self.conv_w = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
-        
 
     def forward(self, x):
         """Forward pass applying coordinate attention mechanism."""
         identity = x
-        
+
         n, c, h, w = x.size()
         x_h = self.pool_h(x)
         x_w = self.pool_w(x).permute(0, 1, 3, 2)
@@ -1238,8 +1331,8 @@ class CoordAtt(nn.Module):
         y = torch.cat([x_h, x_w], dim=2)
         y = self.conv1(y)
         y = self.bn1(y)
-        y = self.act(y) 
-        
+        y = self.act(y)
+
         x_h, x_w = torch.split(y, [h, w], dim=2)
         x_w = x_w.permute(0, 1, 3, 2)
 
@@ -1250,6 +1343,344 @@ class CoordAtt(nn.Module):
 
         return out
 
+
 # =====================================================================================
 # CA注意力机制代码结束
+# =====================================================================================
+
+# =====================================================================================
+# 以下为SE注意力机制代码
+# =====================================================================================
+
+
+class SEModule(nn.Module):
+    """SE (Squeeze-and-Excitation) attention module for channel attention."""
+
+    def __init__(self, channels, reduction=16):
+        """Initialize SE module with channels and reduction ratio."""
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channels, channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        """Forward pass applying SE attention mechanism."""
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
+
+
+class C3SE(C3):
+    """C3 module with SE attention for enhanced channel feature extraction."""
+
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, reduction=16):
+        """Initialize C3 with SE attention."""
+        super().__init__(c1, c2, n, shortcut, g, e)
+        self.se = SEModule(c2, reduction)
+
+    def forward(self, x):
+        """Forward pass with SE attention applied to output."""
+        out = super().forward(x)
+        return self.se(out)
+
+
+# =====================================================================================
+# SE注意力机制代码结束
+# =====================================================================================
+
+# =====================================================================================
+# 以下为BiFPN相关代码
+# =====================================================================================
+
+
+class BiFPNLayer(nn.Module):
+    """Single BiFPN layer for bidirectional feature fusion."""
+
+    def __init__(self, channels, epsilon=1e-4):
+        """Initialize BiFPN layer with channels and epsilon for numerical stability."""
+        super().__init__()
+        self.epsilon = epsilon
+
+        # Top-down pathway weights
+        self.w1 = nn.Parameter(torch.ones(3), requires_grad=True)
+        self.w2 = nn.Parameter(torch.ones(3), requires_grad=True)
+
+        # Bottom-up pathway weights
+        self.w3 = nn.Parameter(torch.ones(2), requires_grad=True)
+        self.w4 = nn.Parameter(torch.ones(2), requires_grad=True)
+
+        # Convolutions for feature fusion
+        self.conv1 = Conv(channels, channels, 3, 1)
+        self.conv2 = Conv(channels, channels, 3, 1)
+        self.conv3 = Conv(channels, channels, 3, 1)
+        self.conv4 = Conv(channels, channels, 3, 1)
+
+        # Upsample and downsample operations
+        self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
+        self.downsample = nn.MaxPool2d(kernel_size=2, stride=2)
+
+    def forward(self, features):
+        """
+        Forward pass for BiFPN layer.
+        features: [P3, P4, P5] - list of feature maps from different levels.
+        """
+        P3, P4, P5 = features
+
+        # Top-down pathway
+        # P4_td = Conv(Resize(P5) + P4)
+        w1 = torch.relu(self.w1)
+        w1 = w1 / (torch.sum(w1) + self.epsilon)
+        P4_td = self.conv1(w1[0] * P4 + w1[1] * self.upsample(P5))
+
+        # P3_out = Conv(Resize(P4_td) + P3)
+        w2 = torch.relu(self.w2)
+        w2 = w2 / (torch.sum(w2) + self.epsilon)
+        P3_out = self.conv2(w2[0] * P3 + w2[1] * self.upsample(P4_td))
+
+        # Bottom-up pathway
+        # P4_out = Conv(P4 + P4_td + Downsample(P3_out))
+        w3 = torch.relu(self.w3)
+        w3 = w3 / (torch.sum(w3) + self.epsilon)
+        P4_out = self.conv3(w3[0] * P4 + w3[1] * P4_td + self.downsample(P3_out))
+
+        # P5_out = Conv(P5 + Downsample(P4_out))
+        w4 = torch.relu(self.w4)
+        w4 = w4 / (torch.sum(w4) + self.epsilon)
+        P5_out = self.conv4(w4[0] * P5 + w4[1] * self.downsample(P4_out))
+
+        return [P3_out, P4_out, P5_out]
+
+
+class BiFPN(nn.Module):
+    """BiFPN (Bidirectional Feature Pyramid Network) for multi-scale feature fusion."""
+
+    def __init__(self, channels, num_layers=2):
+        """Initialize BiFPN with specified channels and number of layers."""
+        super().__init__()
+        self.num_layers = num_layers
+        self.bifpn_layers = nn.ModuleList([BiFPNLayer(channels) for _ in range(num_layers)])
+
+    def forward(self, features):
+        """Forward pass through multiple BiFPN layers."""
+        for layer in self.bifpn_layers:
+            features = layer(features)
+        return features
+
+
+# =====================================================================================
+# BiFPN代码结束
+# =====================================================================================
+
+# =====================================================================================
+# 以下为改进的CSP结构代码
+# =====================================================================================
+
+
+class EnhancedCSP(nn.Module):
+    """Enhanced CSP module with increased skip connections for better feature flow."""
+
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        """Initialize Enhanced CSP with additional skip connections."""
+        super().__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)
+
+        # Enhanced bottleneck with multiple skip connections
+        self.m = nn.ModuleList([EnhancedBottleneck(c_, c_, shortcut, g, e=1.0) for _ in range(n)])
+
+        # Additional skip connection for shallow-to-deep feature transmission
+        self.skip_conv = Conv(c_, c_, 1, 1) if n > 1 else nn.Identity()
+
+    def forward(self, x):
+        """Forward pass with enhanced feature fusion."""
+        x1 = self.cv1(x)
+        x2 = self.cv2(x)
+
+        # Process through enhanced bottlenecks with skip connections
+        features = [x1]
+        for i, layer in enumerate(self.m):
+            if i == 0:
+                out = layer(x1)
+            else:
+                # Add skip connection from initial feature
+                out = layer(out + self.skip_conv(features[0]))
+            features.append(out)
+
+        # Use the final output
+        return self.cv3(torch.cat((features[-1], x2), 1))
+
+
+class EnhancedBottleneck(nn.Module):
+    """Enhanced bottleneck with improved skip connections."""
+
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5):
+        """Initialize enhanced bottleneck with better feature flow."""
+        super().__init__()
+        c_ = int(c2 * e)
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)  # Use 3x3 kernel for better edge detection
+        self.add = shortcut and c1 == c2
+
+        # Additional 1x1 conv for channel alignment if needed
+        self.channel_align = Conv(c1, c2, 1, 1) if c1 != c2 and shortcut else nn.Identity()
+
+    def forward(self, x):
+        """Forward pass with enhanced skip connection."""
+        out = self.cv2(self.cv1(x))
+        if self.add:
+            return x + out
+        else:
+            return self.channel_align(x) + out
+
+
+# =====================================================================================
+# 改进的CSP结构代码结束
+# =====================================================================================
+
+# =====================================================================================
+# 以下为可学习上采样模块代码
+# =====================================================================================
+
+
+class LearnableUpsample(nn.Module):
+    """Learnable upsampling using transposed convolution."""
+
+    def __init__(self, c1, c2, scale_factor=2):
+        """Initialize learnable upsampling module."""
+        super().__init__()
+        self.scale_factor = scale_factor
+        # 确保输出通道数与输入通道数一致
+        self.conv_transpose = nn.ConvTranspose2d(
+            c1,
+            c1,  # 保持通道数不变
+            kernel_size=scale_factor * 2,
+            stride=scale_factor,
+            padding=scale_factor // 2,
+            output_padding=scale_factor // 2 if scale_factor > 1 else 0,
+        )
+        self.bn = nn.BatchNorm2d(c1)
+        self.act = nn.SiLU()
+
+    def forward(self, x):
+        """Forward pass with learnable upsampling."""
+        return self.act(self.bn(self.conv_transpose(x)))
+
+
+class SubPixelUpsample(nn.Module):
+    """Sub-pixel upsampling for learnable upsampling."""
+
+    def __init__(self, c1, c2, scale_factor=2):
+        """Initialize sub-pixel upsampling."""
+        super().__init__()
+        self.scale_factor = scale_factor
+        self.conv = Conv(c1, c2 * (scale_factor**2), 1, 1)
+        self.pixel_shuffle = nn.PixelShuffle(scale_factor)
+
+    def forward(self, x):
+        """Forward pass with sub-pixel upsampling."""
+        x = self.conv(x)
+        return self.pixel_shuffle(x)
+
+
+# =====================================================================================
+# 可学习上采样模块代码结束
+# =====================================================================================
+
+# =====================================================================================
+# 以下为改进的检测头代码
+# =====================================================================================
+
+
+class EnhancedDetect(nn.Module):
+    """Enhanced detection head with small target detection branch."""
+
+    stride = None  # strides computed during build
+    dynamic = False  # force grid reconstruction
+    export = False  # export mode
+
+    def __init__(self, nc=80, anchors=(), ch=(), inplace=True):
+        """Initialize enhanced detection head."""
+        super().__init__()
+        self.nc = nc  # number of classes
+        self.no = nc + 5  # number of outputs per anchor
+        self.nl = len(anchors)  # number of detection layers
+        self.na = len(anchors[0]) // 2  # number of anchors
+        self.grid = [torch.empty(0) for _ in range(self.nl)]  # init grid
+        self.anchor_grid = [torch.empty(0) for _ in range(self.nl)]  # init anchor grid
+        self.register_buffer("anchors", torch.tensor(anchors).float().view(self.nl, -1, 2))  # shape(nl,na,2)
+
+        # Standard detection heads
+        self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)
+
+        # Enhanced classification heads with more non-linearity
+        self.enhanced_cls = nn.ModuleList(
+            [
+                nn.Sequential(
+                    nn.Conv2d(x, x // 2, 1),
+                    nn.BatchNorm2d(x // 2),
+                    nn.SiLU(),
+                    nn.Conv2d(x // 2, nc * self.na, 1),
+                )
+                for x in ch
+            ]
+        )
+
+        # Small target detection branch (for higher resolution features)
+        if len(ch) > 0:
+            self.small_target_head = nn.Conv2d(ch[0], self.no * self.na, 1)
+
+        self.inplace = inplace
+
+    def forward(self, x):
+        """Forward pass with enhanced detection and small target branch."""
+        z = []  # inference output
+        enhanced_outputs = []  # training output
+
+        for i in range(self.nl):
+            # Standard detection
+            x[i] = self.m[i](x[i])  # conv
+            bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+            enhanced_outputs.append(x[i])
+
+            if not self.training:  # inference
+                if self.dynamic or self.grid[i].shape[2:4] != x[i].shape[2:4]:
+                    self.grid[i], self.anchor_grid[i] = self._make_grid(nx, ny, i)
+
+                xy, wh, conf = x[i].sigmoid().split((2, 2, self.nc + 1), 4)
+                xy = (xy * 2 + self.grid[i]) * self.stride[i]  # xy
+                wh = (wh * 2) ** 2 * self.anchor_grid[i]  # wh
+                y = torch.cat((xy, wh, conf), 4)
+                z.append(y.view(bs, self.na * nx * ny, self.no))
+
+        return (
+            enhanced_outputs
+            if self.training
+            else ((torch.cat(z, 1),) if self.export else (torch.cat(z, 1), enhanced_outputs))
+        )
+
+    def _make_grid(self, nx=20, ny=20, i=0):
+        """Generate grid and anchor grid for detection."""
+        d = self.anchors[i].device
+        t = self.anchors[i].dtype
+        shape = 1, self.na, ny, nx, 2  # grid shape
+        y, x = torch.arange(ny, device=d, dtype=t), torch.arange(nx, device=d, dtype=t)
+        if check_version(torch.__version__, "1.10.0"):  # torch>=1.10.0 meshgrid workaround for torch>=0.7 compatibility
+            yv, xv = torch.meshgrid(y, x, indexing="ij")
+        else:
+            yv, xv = torch.meshgrid(y, x)  # torch>=0.7 compatibility
+        grid = torch.stack((xv, yv), 2).expand(shape) - 0.5  # add grid offset, i.e. y = 2.0 * x - 0.5
+        anchor_grid = (self.anchors[i] * self.stride[i]).view((1, self.na, 1, 1, 2)).expand(shape)
+        return grid, anchor_grid
+
+
+# =====================================================================================
+# 改进的检测头代码结束
 # =====================================================================================
