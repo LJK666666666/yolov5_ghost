@@ -1,0 +1,238 @@
+% ====================================================================================================
+% LaTeX 模板：使用XeLaTeX或LuaLaTeX引擎编译以支持中文
+% 模板作者：Gemini
+% 功能：一份关于Ghost-YOLOv5在特定数据集上实证分析的完整报告
+% ====================================================================================================
+
+\documentclass[a4paper]{ctexart}
+
+% --- 宏包引入 ---
+\usepackage{geometry}           % 设置页面边距
+\usepackage{graphicx}           % 插入图片
+\usepackage{booktabs}           % 专业三线表
+\usepackage{float}              % 控制图表浮动位置
+\usepackage{amsmath}            % 数学公式
+\usepackage{hyperref}           % 超链接
+\usepackage{fancyhdr}           % 设置页眉页脚
+
+% --- 页面与字体设置 ---
+\geometry{a4paper, left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm} % 设置页边距
+\CTEXsetup[format={\Large\bfseries}]{section} % 设置章节标题格式
+\CTEXsetup[format={\large\bfseries}]{subsection}
+\CTEXsetup[format={\normalsize\bfseries}]{subsubsection}
+\linespread{1.5} % 设置行距
+
+% --- 页眉页脚 ---
+\pagestyle{fancy}
+\fancyhf{} % 清空页眉页脚
+\fancyhead[C]{\kaishu 机器学习课程设计报告} % 页眉居中
+\fancyfoot[C]{\thepage} % 页脚居中显示页码
+\renewcommand{\headrulewidth}{0.4pt} % 页眉分割线
+
+% ====================================================================================================
+% --- 报告正文开始 ---
+% ====================================================================================================
+
+\begin{document}
+
+% --- 封面 ---
+\title{\heiti \Huge 基于Ghost-YOLOv5的反光衣穿戴检测实证分析报告}
+\author{XXX小组 \\ （组员：张三、李四、王五）}
+\date{\today}
+\maketitle
+\thispagestyle{empty} % 封面不显示页眉页脚
+\newpage
+
+% --- 摘要 ---
+\begin{abstract}
+    \noindent \textbf{摘要：} 工业安全生产中，作业人员规范穿戴反光衣是保障生命安全的关键环节。基于计算机视觉的目标检测技术为自动化安全监控提供了有效途径。本文旨在对一种公开的轻量化目标检测模型——Ghost-YOLOv5进行严谨的实证分析。该模型融合了GhostNet轻量化网络、Coordinate Attention (CA)注意力机制以及Wise-IoU (WIOU)损失函数，旨在实现高精度与高效率的平衡。本研究在一个公开的反光衣穿戴数据集上，通过详尽的消融实验，系统地评估了各个改进模块在特定任务上的实际性能。实验结果表明，与原始YOLOv5s基线模型相比，单一或组合的改进策略并未在本数据集上带来预期的精度提升。特别是，最终的组合模型在关键指标mAP@0.5:0.95上相比基线模型下降了约18.3\%。此外，尽管GhostNet成功降低了模型的参数量与计算量，但也导致了精度的显著损失；而CA注意力机制在带来有限精度增益的同时，大幅增加了推理延迟。本研究的结论揭示了通用改进算法在特定任务场景下的局限性，并强调了在模型选型与优化时，必须结合具体应用场景和核心评价指标进行批判性验证与权衡，不存在普适的“银弹”方案。
+    \vspace{1cm}
+
+    \noindent \textbf{关键词：} 目标检测；YOLOv5；GhostNet；注意力机制；反光衣检测；实证分析
+\end{abstract}
+\newpage
+
+% --- 目录 ---
+\tableofcontents
+\newpage
+
+% ====================================================================================================
+% 1. 绪论
+% ====================================================================================================
+\section{绪论}
+
+\subsection{研究背景与意义}
+在建筑施工、道路交通、仓储物流等高风险作业环境中，工作人员规范穿戴反光衣等个人防护装备（Personal Protective Equipment, PPE）是预防安全事故、保障生命安全的基本要求。传统上，安全监管依赖于人工巡查和监控，这种方式不仅耗费大量人力，且易受主观因素（如疲劳、疏忽）影响，难以实现全天候、无死角的有效覆盖。
+
+近年来，随着深度学习与计算机视觉技术的飞速发展，基于人工智能的自动化视频监控系统展现出巨大潜力。通过在作业现场部署摄像头，利用先进的目标检测算法实时分析视频流，系统能够自动识别未按规定穿戴反光衣等不安全行为，并立即发出预警。这种智能化方案能够显著提升监管效率与准确性，降低安全事故发生率，对于推动工业安全生产的智能化转型具有重要的现实意义和应用价值。
+
+\subsection{相关工作}
+\subsubsection{目标检测算法}
+目标检测是计算机视觉领域的核心任务之一，旨在识别图像中物体的类别并定位其空间位置。近年来，以YOLO（You Only Look Once）系列为代表的单阶段（One-stage）检测器因其在速度与精度上的卓越平衡，成为工业界应用的主流。YOLOv5作为该系列的杰出代表，凭借其高效的训练流程、灵活的模型配置和出色的性能，被广泛应用于各类实时检测任务中。
+
+\subsubsection{轻量化网络与模型优化}
+为了将强大的深度学习模型部署到资源受限的边缘设备上，模型轻量化成为重要的研究方向。GhostNet \cite{ghostnet} 是一种高效的轻量化网络架构，它通过引入“廉价”的线性变换操作来生成冗余特征图，从而在不显著牺牲精度的前提下，大幅减少模型的参数量和计算复杂度（GFLOPs）。
+
+此外，为了让模型更关注图像中的关键信息，注意力机制被广泛引入。Coordinate Attention (CA) \cite{ca} 是一种先进的注意力模块，它通过同时捕捉通道关系和长程空间依赖，帮助模型更精准地定位和识别目标。
+
+在模型训练的优化方面，损失函数的设计至关重要。传统的IoU（Intersection over Union）损失在处理边界框回归问题时存在不足。Wise-IoU (WIOU) \cite{wiou} 等改进型损失函数通过引入更合理的惩罚机制，旨在提升模型的定位精度和收敛速度。
+
+\subsection{本文工作}
+尽管上述改进策略在通用数据集上展现了其优越性，但其在特定工业场景下的实际表现仍有待验证。本文旨在对一篇融合了GhostNet、CA注意力和WIOU损失函数的改进模型（本文称之为Ghost-YOLOv5）进行严谨、系统的实证分析。
+
+本文的主要工作包括：
+\begin{itemize}
+    \item 在一个公开的反光衣穿戴数据集上，复现原始的YOLOv5s基线模型，并将其作为性能参照。
+    \item 通过详尽的消融实验，分别复现并评估了仅加入GhostNet、仅加入CA、仅使用WIOU，以及三者组合的多个模型变体。
+    \item 从模型精度（Precision, Recall, mAP）、模型复杂度（参数量, GFLOPs）和推理效率（FPS）等多个维度，对所有模型进行全面的性能对比。
+    \item 深入分析实验结果，探讨通用改进策略在特定任务上的有效性、局限性以及潜在的冲突，为工业场景下的模型选型与优化提供实证依据和深刻洞见。
+\end{itemize}
+
+% ====================================================================================================
+% 2. 实验与结果分析
+% ====================================================================================================
+\section{实验与结果分析}
+
+\subsection{实验设置}
+\subsubsection{数据集}
+本研究采用Roboflow Universe平台上的公开数据集“Safety Vests (v6)”。该数据集包含了在各种真实场景下拍摄的图像，经过预处理，所有图像尺寸统一为640x640像素。数据集包含两个核心类别：`Safety Vest`（穿戴反光衣）和`No-Safety Vest`（未穿戴反光衣）。我们按照70\%、20\%、10\%的比例将数据集划分为训练集、验证集和测试集。
+
+\subsubsection{实验环境与参数}
+本实验基于PyTorch深度学习框架，在NVIDIA XXX GPU上进行。所有模型均从零开始训练，总训练轮次（epoch）设置为300，批处理大小（batch size）为16，使用Adam优化器，初始学习率设置为0.01。
+
+\subsubsection{评价指标}
+为全面评估模型性能，我们采用以下指标：
+\begin{itemize}
+    \item \textbf{Precision（精确率）}：衡量模型预测为正样本的结果中有多少是真正的正样本。
+    \item \textbf{Recall（召回率）}：衡量所有真实的正样本中，有多少被模型成功预测出来。对于本安全预警任务，\textbf{`No-Safety Vest`类别的召回率}是衡量模型安全底线的核心指标，其重要性高于其他所有指标。
+    \item \textbf{mAP@0.5}：在IoU阈值为0.5时计算的平均精度均值，反映模型找到目标的能力。
+    \item \textbf{mAP@0.5:0.95}：在IoU阈值从0.5到0.95区间内计算的平均精度均值，是衡量模型综合检测能力（包含定位精度）的黄金标准。
+    \item \textbf{参数量与GFLOPs}：衡量模型的静态复杂度和计算量。
+    \item \textbf{FPS（Frames Per Second）}：衡量模型的实时推理速度。
+\end{itemize}
+
+\subsection{实验结果与深入分析}
+我们对五个模型进行了训练和测试：原始YOLOv5s（`yolov5s_`）、仅集成GhostNet的模型（`_1_`）、仅集成CA的模型（`_2_`）、仅使用WIOU的模型（`_3_`）以及三者组合的最终模型（`_123_`）。所有模型的最终性能数据如下。
+
+\subsubsection{总体性能分析}
+如表\ref{tab:overall-performance}所示，从综合性能指标来看，实验结果与预期存在显著差异。
+
+\begin{table}[H]
+    \centering
+    \caption{各模型在测试集上的总体性能对比}
+    \label{tab:overall-performance}
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{模型名称} & \textbf{Precision} & \textbf{Recall} & \textbf{mAP@0.5} & \textbf{mAP@0.5:0.95} \\
+        \midrule
+        yolov5s\_             & \textbf{0.879} & \textbf{0.871} & 0.891          & \textbf{0.575} \\
+        yolov5s-ghost\_1\_    & 0.839          & 0.840          & 0.867          & 0.535          \\
+        yolov5s-ghost\_2\_    & 0.864          & 0.851          & \textbf{0.905} & 0.533          \\
+        yolov5s-ghost\_3\_    & 0.871          & 0.872          & 0.882          & 0.551          \\
+        yolov5s-ghost\_123\_  & 0.809          & 0.784          & 0.817          & 0.470          \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{基线模型表现最佳}：原始的`yolov5s_`模型在最关键的`mAP@0.5:0.95`指标上取得了0.575的最高分，其Precision和Recall也同样领先，这表明基线模型在本任务上具有最强的综合性能。
+    \item \textbf{组合改进效果最差}：论文提出的最终组合方案`yolov5s-ghost_123_`在本数据集上表现最差，其核心指标`mAP@0.5:0.95`仅为0.470，相比基线模型下降了18.3\%，这说明各模块的简单堆砌并未产生协同效应，甚至可能存在负面干扰。
+    \item \textbf{单一模块分析}：`yolov5s-ghost_2_`（集成CA）在`mAP@0.5`上取得了最高分，说明其在“找对目标”方面有一定优势，但在更严格的定位精度上表现不佳。`yolov5s-ghost_3_`（使用WIOU）和`yolov5s-ghost_1_`（使用GhostNet）的性能均未能超越基线模型。
+\end{itemize}
+
+\subsubsection{关键类别性能分析}
+对于安全预警系统，`No-Safety Vest`类别的召回率是评估模型价值的核心。如表\ref{tab:critical-class-performance}所示。
+
+\begin{table}[H]
+    \centering
+    \caption{各模型对 \texttt{No-Safety Vest} 类别的性能对比}
+    \label{tab:critical-class-performance}
+    \begin{tabular}{lcccc}
+        \toprule
+        \textbf{模型名称} & \textbf{Precision} & \textbf{Recall} & \textbf{mAP@0.5} & \textbf{mAP@0.5:0.95} \\
+        \midrule
+        yolov5s\_             & \textbf{0.856} & \textbf{0.839} & \textbf{0.853} & \textbf{0.476} \\
+        yolov5s-ghost\_1\_    & 0.809          & 0.809          & 0.831          & 0.442          \\
+        yolov5s-ghost\_2\_    & 0.835          & 0.828          & 0.884          & 0.454          \\
+        yolov5s-ghost\_3\_    & 0.848          & 0.834          & 0.833          & 0.461          \\
+        yolov5s-ghost\_123\_  & 0.767          & 0.745          & 0.757          & 0.383          \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+令人意外的是，**原始的`yolov5s_`模型在`No-Safety Vest`的召回率（0.839）上同样表现最佳**。这意味着基线模型在发现“未穿戴”这一关键危险行为的能力上，优于所有经过改进的模型。这再次证明了，为通用数据集设计的改进策略，并不能保证在特定任务的关键指标上同样有效。
+
+\subsubsection{模型复杂度与效率分析}
+如表\ref{tab:complexity-efficiency}所示，我们分析了各模型的物理特性。
+
+\begin{table}[H]
+    \centering
+    \caption{各模型的复杂度与推理效率对比}
+    \label{tab:complexity-efficiency}
+    \begin{tabular}{lccccc}
+        \toprule
+        \textbf{模型名称} & \textbf{文件大小(MB)} & \textbf{参数量(M)} & \textbf{GFLOPs} & \textbf{推理时间(ms)} & \textbf{FPS} \\
+        \midrule
+        yolov5s\_             & 13.78 & 7.02 & 7.3 & \textbf{1.28} & \textbf{780.2} \\
+        yolov5s-ghost\_1\_    & \textbf{10.16} & \textbf{5.08} & \textbf{4.8} & 1.59 & 627.7 \\
+        yolov5s-ghost\_2\_    & 14.00 & 7.12 & 7.4 & 2.21 & 453.4 \\
+        yolov5s-ghost\_3\_    & 13.78 & 7.02 & 7.3 & 1.30 & 768.9 \\
+        yolov5s-ghost\_123\_  & 10.38 & 5.18 & 4.8 & 2.40 & 416.2 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{itemize}
+    \item \textbf{GhostNet的有效性与代价}：`yolov5s-ghost_1_`模型成功地将参数量和GFLOPs分别降低了27.6\%和34.2\%，实现了其轻量化的设计目标。然而，这种压缩是以牺牲10.5\%的mAP@0.5:0.95为代价的。
+    \item \textbf{CA注意力的开销}：`yolov5s-ghost_2_`模型在参数量和计算量上略有增加，但其推理时间却从1.28ms大幅增加到2.21ms，导致FPS下降了42.4\%。这表明CA模块虽然能捕捉更多特征，但其复杂的计算模式带来了显著的推理延迟，对于实时检测任务可能得不偿失。
+    \item \textbf{基线模型的卓越效率}：值得注意的是，原始的`yolov5s_`不仅精度最高，其推理速度也几乎是最快的，展现了其卓越的设计与工程实现。
+\end{itemize}
+
+% ====================================================================================================
+% 3. 总结与展望
+% ====================================================================================================
+\section{总结与展望}
+
+\subsection{工作总结}
+本研究对一个融合了GhostNet、CA注意力和WIOU损失函数的Ghost-YOLOv5模型，在反光衣穿戴检测这一特定工业安全任务上进行了全面、严谨的实证分析。通过与YOLOv5s基线模型进行详细的消融对比，我们得出以下核心结论：
+
+\begin{enumerate}
+    \item \textbf{通用改进并非万能}：实验结果清晰地表明，在通用数据集上被验证为有效的改进模块，并不能保证在特定应用场景下同样产生积极效果。在本项目中，所有改进策略的组合均未能超越原始的YOLOv5s基线模型。
+    \item \textbf{轻量化的代价}：GhostNet虽然显著降低了模型的复杂度和计算量，但也带来了不可忽视的精度损失。这揭示了模型性能与效率之间的内在权衡，特别是在需要精细特征以区分相似类别的任务中，过于激进的轻量化策略可能并不适用。
+    \item \textbf{效率与精度的权衡}：CA注意力机制等复杂模块带来的推理延迟可能远大于其带来的精度收益。在追求高FPS的实时检测应用中，必须审慎评估引入新模块的“性价比”。
+    \item \textbf{基线模型的强大}：本研究再次印证了YOLOv5s作为一个成熟的工业级检测框架，其本身在设计上已经达到了非常高的水准，在精度和速度上都具有强大的竞争力。
+\end{enumerate}
+
+最终，我们的研究强调了一个重要观点：在机器学习的实际应用中，不存在一成不变的“最佳实践”。必须以批判性的思维，结合具体任务的核心需求（如本项目的`No-Safety Vest`召回率）和部署环境的限制（如实时性要求），对各种技术方案进行充分的实证检验。一个“负面”的实验结果，同样可以为工程决策提供深刻的洞见和宝贵的参考。
+
+\subsection{未来展望}
+基于本次研究的发现，未来的改进工作可以从以下几个方向展开：
+\begin{itemize}
+    \item \textbf{探索更合适的轻量化方案}：可以尝试其他与GhostNet设计理念不同的轻量化网络，如ShuffleNetV2或MobileNetV3，看其是否能在保持精度的同时更好地实现轻量化。
+    \item \textbf{任务驱动的损失函数设计}：针对“漏报”代价远高于“误报”代价的场景，可以研究或设计非对称的损失函数，在训练阶段就对`No-Safety Vest`类别的漏报施加更大的惩罚。
+    \item \textbf{后处理优化}：在不改变模型结构的情况下，通过优化后处理环节的置信度阈值，可以在模型的精确率和召回率之间进行灵活的权衡，以满足不同场景下的安全预警需求。
+\end{itemize}
+
+% ====================================================================================================
+% 参考文献
+% ====================================================================================================
+\begin{thebibliography}{9}
+    \bibitem{yolov5}
+    Jocher, G., Chaurasia, A., Stoken, A., \& Borovec, J. (2021). \textit{ultralytics/yolov5: v5.0 - YOLOv5-P6 1280 models, AWS, Supervise.ly and YouTube integrations}. Zenodo. \url{https://doi.org/10.5281/zenodo.4679653}
+
+    \bibitem{ghostnet}
+    Han, K., Wang, Y., Tian, Q., Guo, J., Xu, C., \& Xu, C. (2020). GhostNet: More Features from Cheap Operations. \textit{In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}.
+
+    \bibitem{ca}
+    Hou, Q., Zhou, D., \& Feng, J. (2021). Coordinate Attention for Efficient Mobile Network Design. \textit{In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}.
+
+    \bibitem{wiou}
+    Tong, Z., Chen, Y., Xu, Z., \& Yu, R. (2023). Wise-IoU: Bounding Box Regression Loss with a Dynamic Focusing Mechanism. \textit{arXiv preprint arXiv:2301.10051}.
+
+    % 您可以在这里继续添加其他参考文献
+\end{thebibliography}
+
+\end{document}
+% ====================================================================================================
+% --- 报告正文结束 ---
+% ====================================================================================================
