@@ -43,6 +43,9 @@
 - 🎛️ **可配置参数**: 支持自定义置信度阈值、NMS 参数等
 - 📱 **多平台部署**: 支持 CPU、GPU、移动端部署
 - 🔄 **模型导出**: 支持 ONNX、TensorRT、CoreML 等格式
+- 🧪 **批量模型测试**: 支持多模型自动测试和性能对比
+- 📈 **专业性能分析**: NO-Safety Vest召回率专门跟踪和分析
+- 🎯 **智能结果管理**: 自动生成带时间戳的测试结果目录
 
 ## 🎯 YOLOv5s-Ghost 轻量化改进
 
@@ -664,6 +667,10 @@ yolov5_ghost/
 ├── detect.py              # 检测脚本
 ├── val.py                 # 验证脚本
 ├── export.py              # 模型导出脚本
+├── test_all_models.py     # 批量模型测试脚本 ✨
+├── test_models_usage.md   # 模型测试使用说明 ✨
+├── ENHANCEMENT_SUMMARY.md # 功能增强总结 ✨
+├── NO_SAFETY_VEST_RECALL_ENHANCEMENT.md # NO-Safety Vest召回率增强说明 ✨
 ├── requirements.txt       # pip 依赖包
 ├── environment.yml        # conda 环境配置
 └── README.md              # 项目说明
@@ -1168,7 +1175,118 @@ python tools/video.py --weights models_trained/Ghost_e10_0626/weights/best.pt --
 🎯 **高效 · 轻量 · 精准 · 易用 · 可配置**  
 🔧 **Ghost轻量化 + CA注意力 + WIoU损失 + 优化超参数**
 
+## 🧪 模型测试与评估
+
+### 批量模型测试工具
+
+本项目提供了强大的批量模型测试工具 `test_all_models.py`，支持自动测试多个模型并生成详细的性能对比报告。
+
+#### 🎯 主要功能
+- ✅ **多模型批量测试**: 自动测试指定文件夹下的所有模型
+- ✅ **灵活的模型选择**: 支持选择 best.pt 或 last.pt 模型
+- ✅ **训练文件夹选择**: 支持测试不同训练轮数的模型（train200epoch, train300epoch等）
+- ✅ **NO-Safety Vest召回率专门跟踪**: 重点关注安全背心检测的关键指标
+- ✅ **自定义检测阈值**: 支持自定义置信度和IoU阈值
+- ✅ **智能输出目录**: 自动生成带时间戳和训练信息的结果目录
+- ✅ **详细性能报告**: 生成汇总报告和JSON格式的详细结果
+
+#### 🚀 快速开始
+
+```bash
+# 列出可用的训练文件夹
+python test_all_models.py --list-folders
+
+# 测试train200epoch文件夹下的所有best模型（默认）
+python test_all_models.py
+
+# 测试train300epoch文件夹下的所有last模型
+python test_all_models.py --train-folder train300epoch --model-type last
+
+# 使用自定义阈值测试
+python test_all_models.py --train-folder train300epoch --model-type best --conf-thres 0.25 --iou-thres 0.7
+```
+
+#### 📊 输出结果
+
+测试完成后会生成以下结果：
+
+```
+runs/train300epoch_test_best_20250629_161302/
+├── summary_report.txt          # 汇总报告
+├── detailed_results.json       # 详细JSON结果
+├── error_images/               # 预测错误的图片
+│   ├── model1/
+│   └── model2/
+├── model1/                     # 各模型的详细结果
+│   ├── results.csv
+│   ├── labels/
+│   └── ...
+└── model2/
+    └── ...
+```
+
+#### 📈 性能对比示例
+
+汇总报告包含两个重要的性能对比表格：
+
+**整体模型性能对比:**
+```
+模型名称              Precision    Recall       mAP@0.5      mAP@0.5:0.95
+yolov5s-ghost_1_     0.8390       0.8400       0.8670       0.5350
+yolov5s-ghost_2_     0.8930       0.8420       0.8930       0.5810
+yolov5s_            0.8890       0.8300       0.8890       0.5720
+```
+
+**NO-Safety Vest 类别性能对比:**
+```
+模型名称              Precision    Recall       mAP@0.5      mAP@0.5:0.95
+yolov5s-ghost_1_     0.8090       0.8090       0.8310       0.4420
+yolov5s-ghost_2_     0.8420       0.8390       0.8560       0.4890
+yolov5s_            0.8390       0.8390       0.8560       0.4890
+```
+
+#### 🔧 命令行参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--model-type` | str | `best` | 选择模型类型：`best` 或 `last` |
+| `--train-folder` | str | `train200epoch` | 训练文件夹名称 |
+| `--conf-thres` | float | `0.001` | 置信度阈值（0.0-1.0） |
+| `--iou-thres` | float | `0.6` | IoU阈值（0.0-1.0） |
+| `--list-folders` | flag | - | 列出所有可用的训练文件夹 |
+
+#### 💡 使用建议
+
+1. **验证模式**: 使用低置信度阈值（0.001）评估完整召回率
+2. **实际应用**: 使用较高置信度阈值（0.25-0.5）获得可靠检测
+3. **模型对比**: 同时测试不同训练轮数和模型类型，找出最佳配置
+4. **关注NO-Safety Vest召回率**: 这是安全检测应用的关键指标
+
+详细使用说明请参考：[test_models_usage.md](test_models_usage.md)
+
 ## 📝 更新日志
+
+### v1.2.0 (2025-06-29)
+
+#### 🧪 模型测试与评估功能
+- **批量模型测试工具**: 新增 `test_all_models.py` 脚本，支持批量测试多个模型
+- **训练文件夹选择**: 支持选择不同训练文件夹的模型进行测试
+- **NO-Safety Vest召回率专门跟踪**: 重点关注安全背心检测的关键指标
+- **智能输出目录命名**: 自动生成 `{train_folder}_test_{model_type}_{timestamp}` 格式的结果目录
+- **详细性能报告**: 生成包含整体性能和NO-Safety Vest专门性能的汇总报告
+- **自动文件夹检测**: 自动扫描和验证可用的训练文件夹
+
+#### 🔧 功能增强
+- **命令行参数支持**: 支持通过命令行参数控制模型类型、训练文件夹、置信度阈值等
+- **错误处理优化**: 增强的错误处理和用户友好的提示信息
+- **解析功能修复**: 修复NO-Safety Vest召回率解析问题，确保准确的性能指标
+
+#### 📊 测试结果示例
+```bash
+# 不同训练文件夹模型对比结果
+train200epoch + best + conf=0.001: 最佳mAP@0.5=0.9050, NO-Safety Vest召回率=0.8280
+train300epoch + best + conf=0.25:  最佳mAP@0.5=0.8930, NO-Safety Vest召回率=0.8390
+```
 
 ### v1.1.0 (2025-06-27)
 
