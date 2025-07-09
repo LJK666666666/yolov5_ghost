@@ -56,8 +56,9 @@ VOC/
 
 # Neural Network weights -----------------------------------------------------------------------------------------------
 *.weights
-*.pt  # 重新启用，排除大的训练权重文件
-!yolov5s.pt  # 明确允许 yolov5s.pt
+*.pt  # 排除所有权重文件，包括大文件
+!yolov5s.pt  # 明确允许 yolov5s.pt (小文件)
+yolov5x.pt  # 明确排除大文件
 *.pb
 *.onnx
 *.engine
