@@ -103,6 +103,100 @@ class QFocalLoss(nn.Module):
             return loss
 
 
+class DistillationLoss(nn.Module):
+    """
+    知识蒸馏损失函数
+    创新亮点四：引入"知识蒸馏"提升小模型性能
+
+    计算学生模型和教师模型输出之间的蒸馏损失，使用KL散度来衡量两个概率分布的差异。
+    """
+
+    def __init__(self, temperature=4.0, alpha=0.7):
+        """
+        初始化蒸馏损失函数
+
+        Args:
+            temperature (float): 温度参数，用于软化概率分布
+            alpha (float): 蒸馏损失的权重，范围[0,1]
+        """
+        super(DistillationLoss, self).__init__()
+        self.temperature = temperature
+        self.alpha = alpha
+        self.kl_div = nn.KLDivLoss(reduction='batchmean')
+
+    def forward(self, student_outputs, teacher_outputs, targets, hard_loss):
+        """
+        计算蒸馏损失
+
+        Args:
+            student_outputs: 学生模型的输出 [batch_size, anchors, grid, grid, classes+5]
+            teacher_outputs: 教师模型的输出 [batch_size, anchors, grid, grid, classes+5]
+            targets: 真实标签
+            hard_loss: 原始的hard loss
+
+        Returns:
+            total_loss: 总损失 = (1-alpha) * hard_loss + alpha * soft_loss
+        """
+        soft_loss = 0.0
+
+        # 对每个检测层计算蒸馏损失
+        for i, (student_out, teacher_out) in enumerate(zip(student_outputs, teacher_outputs)):
+            # YOLO输出格式: [batch, anchors, grid_y, grid_x, classes+5]
+            # 提取分类预测部分 (去掉坐标和置信度)
+            student_cls = student_out[..., 5:]  # [batch, anchors, grid_y, grid_x, student_classes]
+            teacher_cls = teacher_out[..., 5:]  # [batch, anchors, grid_y, grid_x, teacher_classes]
+
+            # 检查特征图大小是否匹配 (grid_y, grid_x)
+            student_shape = student_cls.shape[2:4]  # [grid_y, grid_x]
+            teacher_shape = teacher_cls.shape[2:4]  # [grid_y, grid_x]
+
+            if student_shape != teacher_shape:
+                # 如果特征图大小不匹配，使用双线性插值调整教师模型输出
+                # 重塑为 [batch*anchors, classes, grid_y, grid_x] 进行插值
+                batch, anchors, _, _, classes = teacher_cls.shape
+                teacher_cls_reshaped = teacher_cls.permute(0, 1, 4, 2, 3).contiguous()  # [batch, anchors, classes, grid_y, grid_x]
+                teacher_cls_reshaped = teacher_cls_reshaped.view(batch * anchors, classes, teacher_shape[0], teacher_shape[1])
+
+                # 插值到学生模型的特征图大小
+                teacher_cls_reshaped = torch.nn.functional.interpolate(
+                    teacher_cls_reshaped,
+                    size=student_shape,
+                    mode='bilinear',
+                    align_corners=False
+                )
+
+                # 恢复原始形状
+                teacher_cls = teacher_cls_reshaped.view(batch, anchors, classes, student_shape[0], student_shape[1])
+                teacher_cls = teacher_cls.permute(0, 1, 3, 4, 2).contiguous()  # [batch, anchors, grid_y, grid_x, classes]
+
+            # 处理类别数不匹配的情况
+            student_nc = student_cls.shape[-1]
+            teacher_nc = teacher_cls.shape[-1]
+
+            if student_nc != teacher_nc:
+                # 如果类别数不匹配，只使用较小的类别数进行蒸馏
+                min_nc = min(student_nc, teacher_nc)
+                student_cls = student_cls[..., :min_nc]
+                teacher_cls = teacher_cls[..., :min_nc]
+
+            # 重塑张量为 [batch*anchors*grid_y*grid_x, classes] 以便计算KL散度
+            student_cls_flat = student_cls.contiguous().view(-1, student_cls.shape[-1])
+            teacher_cls_flat = teacher_cls.contiguous().view(-1, teacher_cls.shape[-1])
+
+            # 应用温度软化
+            student_soft = torch.log_softmax(student_cls_flat / self.temperature, dim=-1)
+            teacher_soft = torch.softmax(teacher_cls_flat / self.temperature, dim=-1)
+
+            # 计算KL散度
+            kl_loss = self.kl_div(student_soft, teacher_soft) * (self.temperature ** 2)
+            soft_loss += kl_loss
+
+        # 计算总损失
+        total_loss = (1 - self.alpha) * hard_loss + self.alpha * soft_loss
+
+        return total_loss, soft_loss
+
+
 class ComputeLoss:
     """Computes the total loss for YOLOv5 model predictions, including classification, box, and objectness losses."""
 
@@ -135,9 +229,17 @@ class ComputeLoss:
         self.nl = m.nl  # number of layers
         self.anchors = m.anchors
         self.device = device
-        
+
         # Box loss type selection
         self.box_loss = getattr(opt, 'box_loss', 'ciou').lower() if opt else 'ciou'
+
+        # 知识蒸馏相关参数
+        self.distillation = getattr(opt, 'distillation', False) if opt else False
+        if self.distillation:
+            self.distill_loss = DistillationLoss(
+                temperature=getattr(opt, 'distill_temp', 4.0),
+                alpha=getattr(opt, 'distill_alpha', 0.7)
+            )
 
     def __call__(self, p, targets):  # predictions, targets
         """Performs forward pass, calculating class, box, and object loss for given predictions and targets."""
@@ -202,6 +304,38 @@ class ComputeLoss:
         bs = tobj.shape[0]  # batch size
 
         return (lbox + lobj + lcls) * bs, torch.cat((lbox, lobj, lcls)).detach()
+
+    def __call_with_distillation__(self, student_pred, teacher_pred, targets):
+        """
+        计算包含知识蒸馏的损失
+
+        Args:
+            student_pred: 学生模型预测
+            teacher_pred: 教师模型预测
+            targets: 真实标签
+
+        Returns:
+            total_loss: 总损失
+            loss_items: 损失项详情 [hard_loss, soft_loss, total_loss]
+        """
+        # 计算原始hard loss
+        hard_loss, hard_loss_items = self.__call__(student_pred, targets)
+
+        if self.distillation and teacher_pred is not None:
+            # 计算蒸馏损失
+            total_loss, soft_loss = self.distill_loss(student_pred, teacher_pred, targets, hard_loss)
+
+            # 返回详细的损失信息
+            loss_items = torch.cat([
+                hard_loss_items,  # [lbox, lobj, lcls]
+                torch.tensor([soft_loss], device=self.device),  # soft loss
+                torch.tensor([total_loss], device=self.device)   # total loss
+            ]).detach()
+
+            return total_loss, loss_items
+        else:
+            # 没有蒸馏时，返回原始损失
+            return hard_loss, hard_loss_items
 
     def build_targets(self, p, targets):
         """Prepares model targets from input targets (image,class,x,y,w,h) for loss computation, returning class, box,

@@ -1,0 +1,78 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+# YOLOv5s with Hybrid MoE (Shared Expert + Sparse Experts) Architecture
+# 基于GUIDE/MOE2.md设计的混合式稀疏MoE架构
+# 
+# 创新特性：
+# 1. 共享专家(Shared Expert) + 稀疏专家(Sparse Experts)混合架构
+# 2. 共享专家处理通用特征，专业专家处理特定特征
+# 3. 激活率控制在10%-15%之间，平衡性能和效率
+# 4. 专家数量适中(12-16个)，便于训练和收敛
+#
+# 架构优势：
+# - 共享专家保证基础性能下限
+# - 专业专家提供专业化能力
+# - 负载均衡更容易实现
+# - 训练更稳定，收敛更快
+#
+# Author: Augment Agent (Claude Sonnet 4 by Anthropic)
+# Created: 2025-07-05
+
+# Parameters
+nc: 80 # number of classes
+depth_multiple: 0.33 # model depth multiple
+width_multiple: 0.50 # layer channel multiple
+anchors:
+  - [10, 13, 16, 30, 33, 23] # P3/8
+  - [30, 61, 62, 45, 59, 119] # P4/16
+  - [116, 90, 156, 198, 373, 326] # P5/32
+
+# YOLOv5 v6.0 backbone with Hybrid MoE architecture
+backbone:
+  # [from, number, module, args]
+  [
+    [-1, 1, Conv, [64, 6, 2, 2]], # 0-P1/2
+    [-1, 1, Conv, [128, 3, 2]], # 1-P2/4 (保持标准卷积)
+    [-1, 3, C3, [128]], # 2 (保持标准C3)
+    [-1, 1, Conv, [256, 3, 2]], # 3-P3/8 (保持标准卷积)
+    [-1, 6, C3HybridMoE, [128, 1, True, 1, 0.5, 12, 2, 0.25]], # 4 (混合MoE: 12专家激活2个+共享专家, 激活率~25%)
+    [-1, 1, Conv, [256, 3, 2]], # 5-P4/16 (保持标准卷积)
+    [-1, 9, C3HybridMoE, [256, 1, True, 1, 0.5, 16, 2, 0.25]], # 6 (混合MoE: 16专家激活2个+共享专家, 激活率~18.75%)
+    [-1, 1, Conv, [512, 3, 2]], # 7-P5/32 (保持标准卷积)
+    [-1, 3, C3HybridMoE, [512, 1, True, 1, 0.5, 20, 2, 0.25]], # 8 (混合MoE: 20专家激活2个+共享专家, 激活率~15%)
+    [-1, 1, SPPF, [1024, 5]], # 9
+  ]
+
+# YOLOv5 v6.0 head with Hybrid MoE architecture
+head: [
+    [-1, 1, Conv, [256, 1, 1]], # 10 (保持标准卷积)
+    [-1, 1, nn.Upsample, [None, 2, "nearest"]], # 11
+    [[-1, 6], 1, Concat, [1]], # 12 cat backbone P4
+    [-1, 3, C3HybridMoE, [256, 1, False, 1, 0.5, 16, 2, 0.25]], # 13 (混合MoE特征融合: 16专家激活2个+共享专家)
+
+    [-1, 1, Conv, [128, 1, 1]], # 14 (保持标准卷积)
+    [-1, 1, nn.Upsample, [None, 2, "nearest"]], # 15
+    [[-1, 4], 1, Concat, [1]], # 16 cat backbone P3
+    [-1, 3, C3, [128, False]], # 17 (P3/8-small) (小目标保持标准，确保精度)
+
+    [-1, 1, Conv, [128, 3, 2]], # 18 (保持标准卷积)
+    [[-1, 14], 1, Concat, [1]], # 19 cat head P4
+    [-1, 3, C3HybridMoE, [256, 1, False, 1, 0.5, 12, 2, 0.25]], # 20 (P4/16-medium) (混合MoE: 12专家激活2个+共享专家)
+
+    [-1, 1, Conv, [256, 3, 2]], # 21 (保持标准卷积)
+    [[-1, 10], 1, Concat, [1]], # 22 cat head P5
+    [-1, 3, C3HybridMoE, [512, 1, False, 1, 0.5, 16, 2, 0.25]], # 23 (P5/32-large) (混合MoE: 16专家激活2个+共享专家)
+
+    [[17, 20, 23], 1, Detect, [nc, anchors, [128, 256, 512]]], # Detect(P3, P4, P5)
+  ]
+
+# 参数说明:
+# C3HybridMoE: [channels, n, shortcut, g, e, num_experts, top_k, shared_expert_ratio]
+# - channels: 输出通道数
+# - n: Bottleneck重复次数
+# - shortcut: 是否使用残差连接
+# - g: 分组卷积数
+# - e: 通道扩展比例
+# - num_experts: 专业专家数量
+# - top_k: 激活的专业专家数量
+# - shared_expert_ratio: 共享专家通道比例(0.25表示共享专家占25%通道)

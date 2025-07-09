@@ -447,6 +447,156 @@ class EarlyStopping:
         return stop
 
 
+class SmoothEarlyStopping:
+    """
+    Implements smooth early stopping based on moving average of fitness scores.
+
+    This mechanism calculates the average fitness over a sliding window (default 10 epochs)
+    and compares it with the historical best average to determine early stopping.
+    This approach is more robust to training fluctuations and provides smoother convergence detection.
+
+    Author: Augment Agent (Claude Sonnet 4 by Anthropic)
+    Created: 2025-07-05
+    """
+
+    def __init__(self, patience=30, window_size=10, min_delta=0.0001):
+        """
+        Initializes smooth early stopping mechanism.
+
+        Args:
+            patience (int): Number of epochs to wait after no improvement in average fitness
+            window_size (int): Size of sliding window for fitness averaging (default: 10)
+            min_delta (float): Minimum change to qualify as an improvement (default: 0.0001)
+        """
+        self.patience = patience or float("inf")
+        self.window_size = window_size
+        self.min_delta = min_delta
+
+        # Fitness history for sliding window
+        self.fitness_history = []
+
+        # Best average fitness tracking
+        self.best_avg_fitness = 0.0
+        self.best_avg_epoch = 0
+
+        # Current state
+        self.current_avg_fitness = 0.0
+        self.possible_stop = False
+
+        # Statistics for logging
+        self.total_epochs = 0
+        self.improvement_count = 0
+
+    def __call__(self, epoch, fitness):
+        """
+        Evaluates if training should stop based on smoothed fitness improvement.
+
+        Args:
+            epoch (int): Current epoch number
+            fitness (float): Current epoch fitness score
+
+        Returns:
+            bool: True if training should stop, False otherwise
+        """
+        self.total_epochs = epoch + 1
+
+        # Add current fitness to history (convert to scalar if needed)
+        fitness_scalar = float(fitness.item()) if hasattr(fitness, 'item') else float(fitness)
+        self.fitness_history.append(fitness_scalar)
+
+        # Maintain sliding window
+        if len(self.fitness_history) > self.window_size:
+            self.fitness_history.pop(0)
+
+        # Calculate current average fitness
+        self.current_avg_fitness = sum(self.fitness_history) / len(self.fitness_history)
+
+        # Check for improvement (only after we have a full window)
+        if len(self.fitness_history) >= self.window_size:
+            if self.current_avg_fitness > (self.best_avg_fitness + self.min_delta):
+                self.best_avg_fitness = self.current_avg_fitness
+                self.best_avg_epoch = epoch
+                self.improvement_count += 1
+        else:
+            # For initial epochs, update best if current average is better
+            if self.current_avg_fitness > self.best_avg_fitness:
+                self.best_avg_fitness = self.current_avg_fitness
+                self.best_avg_epoch = epoch
+                self.improvement_count += 1
+
+        # Calculate epochs since last improvement
+        delta = epoch - self.best_avg_epoch
+
+        # Determine if we should stop
+        self.possible_stop = delta >= (self.patience - 1)
+        stop = delta >= self.patience
+
+        if stop:
+            self._log_stopping_info(epoch, fitness)
+
+        return stop
+
+    def _log_stopping_info(self, epoch, current_fitness):
+        """Log detailed information when stopping training."""
+        window_str = f"last {len(self.fitness_history)} epochs" if len(self.fitness_history) < self.window_size else f"last {self.window_size} epochs"
+
+        # 安全地转换所有可能的numpy数组为Python原生类型
+        def safe_float(value):
+            try:
+                return float(value.item()) if hasattr(value, 'item') else float(value)
+            except (AttributeError, TypeError, ValueError):
+                return 0.0
+
+        def safe_int(value):
+            try:
+                return int(value.item()) if hasattr(value, 'item') else int(value)
+            except (AttributeError, TypeError, ValueError):
+                return 0
+
+        LOGGER.info(
+            f"Stopping training early with Smooth Early Stopping:\n"
+            f"  • No improvement in average fitness over {safe_int(self.patience)} epochs\n"
+            f"  • Current fitness: {safe_float(current_fitness):.6f}\n"
+            f"  • Current average fitness ({window_str}): {safe_float(self.current_avg_fitness):.6f}\n"
+            f"  • Best average fitness: {safe_float(self.best_avg_fitness):.6f} (epoch {safe_int(self.best_avg_epoch)})\n"
+            f"  • Total improvements detected: {safe_int(self.improvement_count)}\n"
+            f"  • Window size: {safe_int(self.window_size)} epochs\n"
+            f"  • Minimum delta: {safe_float(self.min_delta)}\n"
+            f"Best model saved as best.pt.\n"
+            f"To adjust parameters: --smooth-patience {safe_int(self.patience)} --smooth-window {safe_int(self.window_size)} --smooth-delta {safe_float(self.min_delta)}"
+        )
+
+    def get_status_info(self):
+        """
+        Get current status information for logging.
+
+        Returns:
+            dict: Dictionary containing current status information
+        """
+        def safe_float(value):
+            """安全地转换为float"""
+            try:
+                return float(value.item()) if hasattr(value, 'item') else float(value)
+            except (AttributeError, TypeError, ValueError):
+                return 0.0
+
+        def safe_int(value):
+            """安全地转换为int"""
+            try:
+                return int(value.item()) if hasattr(value, 'item') else int(value)
+            except (AttributeError, TypeError, ValueError):
+                return 0
+
+        return {
+            'current_avg_fitness': safe_float(self.current_avg_fitness),
+            'best_avg_fitness': safe_float(self.best_avg_fitness),
+            'best_avg_epoch': safe_int(self.best_avg_epoch),
+            'window_size': len(self.fitness_history),
+            'epochs_since_improvement': safe_int(self.total_epochs - 1 - self.best_avg_epoch if self.total_epochs > 0 else 0),
+            'improvement_count': safe_int(self.improvement_count)
+        }
+
+
 class ModelEMA:
     """Updated Exponential Moving Average (EMA) from https://github.com/rwightman/pytorch-image-models
     Keeps a moving average of everything in the model state_dict (parameters and buffers)

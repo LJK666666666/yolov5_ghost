@@ -20,7 +20,7 @@ import requests
 import torch
 import torch.nn as nn
 from PIL import Image
-from torch.cuda import amp
+import torch.amp as amp
 
 # Import 'ultralytics' package or install if missing
 try:
@@ -456,6 +456,103 @@ class Concat(nn.Module):
         return torch.cat(x, self.d)
 
 
+class WeightedFeatureFusion(nn.Module):
+    """
+    加权特征融合模块 - 创新亮点三：构建"加权"的特征融合颈部网络
+
+    核心思想：YOLOv5的FPN+PAN结构在融合不同层级的特征图时，用的是简单粗暴的Concat（拼接）。
+    但不同层级的特征对于最终检测的贡献度不一定相等。我们可以让网络自己去学习不同特征图的"重要性"，
+    并据此进行加权融合。
+
+    借鉴了BiFPN（加权双向特征金字塔网络）的核心思想，引入了一个高效的加权融合机制。
+    该机制让网络在训练中自主学习每个输入特征的权重，从而实现更智能、更高效的特征融合。
+    """
+
+    def __init__(self, num_inputs, eps=1e-4):
+        """
+        初始化加权特征融合模块
+
+        Args:
+            num_inputs (int): 输入特征图的数量
+            eps (float): 防止除零的小数值
+        """
+        super(WeightedFeatureFusion, self).__init__()
+        self.num_inputs = num_inputs
+        self.eps = eps
+
+        # 创建一个可学习的权重参数，每个输入对应一个权重
+        # 初始化为1，表示开始时所有特征图权重相等
+        self.weights = nn.Parameter(torch.ones(num_inputs, dtype=torch.float32), requires_grad=True)
+
+    def forward(self, x):
+        """
+        前向传播
+
+        Args:
+            x (list): 包含多个特征图的列表，每个特征图的尺寸必须相同 [C, H, W]
+
+        Returns:
+            torch.Tensor: 加权融合后的特征图
+        """
+        # 归一化权重，确保其为正且和为1，增加稳定性
+        w = torch.clamp(self.weights, min=0.0)  # 使用clamp确保权重为正，避免in-place操作
+        w = w / (torch.sum(w, dim=0) + self.eps)  # 加上一个很小的数防止除以0
+
+        # 计算加权和
+        # 注意：这里是逐元素相加，不是通道拼接
+        out = 0
+        for i in range(self.num_inputs):
+            out += x[i] * w[i]
+
+        return out
+
+
+class WeightedFeatureFusionConcat(nn.Module):
+    """
+    加权特征融合模块（通道拼接版本）
+
+    这个版本在加权融合后进行通道拼接，保持与原始Concat相同的输出通道数。
+    适用于需要保持通道数的场景。
+    """
+
+    def __init__(self, num_inputs, eps=1e-4):
+        """
+        初始化加权特征融合模块（通道拼接版本）
+
+        Args:
+            num_inputs (int): 输入特征图的数量
+            eps (float): 防止除零的小数值
+        """
+        super(WeightedFeatureFusionConcat, self).__init__()
+        self.num_inputs = num_inputs
+        self.eps = eps
+
+        # 为每个输入创建独立的权重
+        self.weights = nn.Parameter(torch.ones(num_inputs, dtype=torch.float32), requires_grad=True)
+
+    def forward(self, x):
+        """
+        前向传播（通道拼接版本）
+
+        Args:
+            x (list): 包含多个特征图的列表
+
+        Returns:
+            torch.Tensor: 加权后拼接的特征图
+        """
+        # 归一化权重
+        w = torch.clamp(self.weights, min=0.0)  # 使用clamp确保权重为正，避免in-place操作
+        w = w / (torch.sum(w, dim=0) + self.eps)
+
+        # 对每个特征图应用权重，然后拼接
+        weighted_features = []
+        for i in range(self.num_inputs):
+            weighted_features.append(x[i] * w[i])
+
+        # 通道拼接
+        return torch.cat(weighted_features, dim=1)
+
+
 class DetectMultiBackend(nn.Module):
     """YOLOv5 MultiBackend class for inference on various backends including PyTorch, ONNX, TensorRT, and more."""
 
@@ -876,7 +973,7 @@ class AutoShape(nn.Module):
             p = next(self.model.parameters()) if self.pt else torch.empty(1, device=self.model.device)  # param
             autocast = self.amp and (p.device.type != "cpu")  # Automatic Mixed Precision (AMP) inference
             if isinstance(ims, torch.Tensor):  # torch
-                with amp.autocast(autocast):
+                with amp.autocast('cuda', enabled=autocast):
                     return self.model(ims.to(p.device).type_as(p), augment=augment)  # inference
 
             # Pre-process
@@ -903,7 +1000,7 @@ class AutoShape(nn.Module):
             x = np.ascontiguousarray(np.array(x).transpose((0, 3, 1, 2)))  # stack and BHWC to BCHW
             x = torch.from_numpy(x).to(p.device).type_as(p) / 255  # uint8 to fp16/32
 
-        with amp.autocast(autocast):
+        with amp.autocast('cuda', enabled=autocast):
             # Inference
             with dt[1]:
                 y = self.model(x, augment=augment)  # forward
@@ -1252,4 +1349,730 @@ class CoordAtt(nn.Module):
 
 # =====================================================================================
 # CA注意力机制代码结束
+# =====================================================================================
+
+
+# =====================================================================================
+# 以下为SE注意力机制代码
+'''
+SE注意力机制（Squeeze-and-Excitation）实现
+
+SE注意力机制是一种通道注意力机制，通过学习通道间的相互依赖关系来重新校准特征响应。
+主要包含两个操作：
+1. Squeeze：通过全局平均池化将每个通道的空间特征压缩为一个标量
+2. Excitation：通过两个全连接层学习通道间的非线性交互，生成通道权重
+
+论文：Squeeze-and-Excitation Networks (https://arxiv.org/abs/1709.01507)
+
+SE模块的优势：
+- 轻量级：参数量很少，计算开销小
+- 即插即用：可以轻松集成到现有网络架构中
+- 性能提升：能够显著提升模型的表征能力
+- 通道注意力：专注于"什么"特征是重要的
+
+实现细节：
+- 使用全局平均池化进行特征压缩
+- 使用两个FC层构建激励操作，中间使用ReLU激活
+- 最后使用Sigmoid生成0-1之间的通道权重
+- 通过逐元素相乘将权重应用到原始特征上
+'''
+
+class SEBlock(nn.Module):
+    """
+    Squeeze-and-Excitation Block
+
+    SE注意力机制模块，通过学习通道间的相互依赖关系来重新校准特征响应。
+    支持自适应通道数检测，可以在YAML配置中不指定通道数。
+
+    Args:
+        c1 (int, optional): 输入通道数，如果为None则在第一次前向传播时自动检测
+        reduction (int): 降维比例，默认为16
+    """
+
+    def __init__(self, c1=None, reduction=16):
+        """初始化SE模块"""
+        super(SEBlock, self).__init__()
+        self.c1 = c1
+        self.reduction = reduction
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 全局平均池化
+
+        # 如果提供了通道数，立即初始化FC层
+        if c1 is not None:
+            self._build_fc_layers(c1)
+        else:
+            self.fc = None  # 延迟初始化
+
+    def _build_fc_layers(self, c1):
+        """构建FC层"""
+        self.fc = nn.Sequential(
+            nn.Linear(c1, c1 // self.reduction, bias=False),  # 降维
+            nn.ReLU(inplace=True),                            # 激活
+            nn.Linear(c1 // self.reduction, c1, bias=False),  # 升维
+            nn.Sigmoid()                                      # 生成权重
+        )
+
+    def forward(self, x):
+        """前向传播"""
+        b, c, _, _ = x.size()
+
+        # 如果FC层未初始化，则根据输入自动初始化
+        if self.fc is None:
+            self.c1 = c
+            self._build_fc_layers(c)
+            # 将FC层移动到正确的设备
+            if x.is_cuda:
+                self.fc = self.fc.cuda()
+
+        # Squeeze: 全局平均池化
+        y = self.avg_pool(x).view(b, c)
+        # Excitation: 通过FC层生成通道权重
+        y = self.fc(y).view(b, c, 1, 1)
+        # 将权重应用到原始特征
+        return x * y.expand_as(x)
+
+
+class SEConv(nn.Module):
+    """
+    SE-Conv: 集成SE注意力机制的卷积模块
+
+    在标准卷积后添加SE注意力机制，增强特征表示能力。
+    """
+
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True, reduction=16):
+        """初始化SE-Conv模块"""
+        super(SEConv, self).__init__()
+        self.conv = Conv(c1, c2, k, s, p, g, d, act)  # 标准卷积
+        self.se = SEBlock(c2, reduction)              # SE注意力机制
+
+    def forward(self, x):
+        """前向传播"""
+        x = self.conv(x)
+        x = self.se(x)
+        return x
+
+
+class SEBottleneck(nn.Module):
+    """
+    SE-Bottleneck: 集成SE注意力机制的瓶颈模块
+
+    在标准Bottleneck的基础上添加SE注意力机制。
+    """
+
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, reduction=16):
+        """初始化SE-Bottleneck模块"""
+        super(SEBottleneck, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c_, c2, 3, 1, g=g)
+        self.se = SEBlock(c2, reduction)  # SE注意力机制
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """前向传播"""
+        if self.add:
+            return x + self.se(self.cv2(self.cv1(x)))
+        else:
+            return self.se(self.cv2(self.cv1(x)))
+
+
+class C3SE(C3):
+    """
+    C3-SE: 集成SE注意力机制的C3模块
+
+    将C3模块中的Bottleneck替换为SEBottleneck，增强特征表示能力。
+    """
+
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, reduction=16):
+        """初始化C3-SE模块"""
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(SEBottleneck(c_, c_, shortcut, g, e=1.0, reduction=reduction) for _ in range(n)))
+
+# =====================================================================================
+# SE注意力机制代码结束
+# =====================================================================================
+
+
+# =====================================================================================
+# 以下为MoE（Mixture of Experts）架构代码
+'''
+MoE（Mixture of Experts）架构实现
+
+MoE是一种稀疏激活的神经网络架构，通过使用多个专家网络和门控机制来提升模型容量，
+同时保持计算效率。主要组件包括：
+
+1. Expert Networks: 多个专家网络，每个专家专门处理特定类型的输入
+2. Gating Network: 门控网络，决定哪些专家被激活以及激活权重
+3. Top-K Selection: 只激活Top-K个专家，实现稀疏计算
+4. Load Balancing: 负载均衡机制，确保专家使用均匀
+
+论文参考：
+- "Outrageously Large Neural Networks: The Sparsely-Gated Mixture-of-Experts Layer" (2017)
+- "Switch Transformer: Scaling to Trillion Parameter Models with Simple and Efficient Sparsity" (2021)
+
+MoE的优势：
+- 模型容量大：可以有很多专家，但每次只激活少数几个
+- 计算效率高：稀疏激活，实际计算量不会线性增长
+- 专业化：不同专家可以学习处理不同类型的特征
+- 可扩展性：容易扩展到更多专家
+
+适用场景：
+- 大规模数据集
+- 多样化的输入模式
+- 需要高容量但保持效率的场景
+'''
+
+import torch.nn.functional as F
+from typing import Tuple, Optional
+
+
+class Expert(nn.Module):
+    """
+    单个专家网络
+
+    每个专家是一个简单的前馈网络，通常包含两个线性层和激活函数。
+    在目标检测中，我们将其适配为卷积专家。
+    """
+
+    def __init__(self, c1, c2, k=3, s=1, p=None, g=1, act=True, expert_type='conv'):
+        """
+        初始化专家网络
+
+        Args:
+            c1: 输入通道数
+            c2: 输出通道数
+            k: 卷积核大小
+            s: 步长
+            p: 填充
+            g: 分组
+            act: 是否使用激活函数
+            expert_type: 专家类型 ('conv', 'bottleneck', 'dwconv')
+        """
+        super(Expert, self).__init__()
+        self.expert_type = expert_type
+
+        if expert_type == 'conv':
+            # 标准卷积专家
+            self.expert = Conv(c1, c2, k, s, p, g, act=act)
+        elif expert_type == 'bottleneck':
+            # 瓶颈结构专家
+            c_ = c2 // 4
+            self.expert = nn.Sequential(
+                Conv(c1, c_, 1, 1, act=act),
+                Conv(c_, c_, k, s, p, g, act=act),
+                Conv(c_, c2, 1, 1, act=False)
+            )
+        elif expert_type == 'dwconv':
+            # 深度可分离卷积专家
+            self.expert = nn.Sequential(
+                DWConv(c1, c1, k, s, act=act),
+                Conv(c1, c2, 1, 1, act=act)
+            )
+        else:
+            raise ValueError(f"Unsupported expert_type: {expert_type}")
+
+    def forward(self, x):
+        """前向传播"""
+        return self.expert(x)
+
+
+class SparseGating(nn.Module):
+    """
+    稀疏门控网络
+
+    负责计算每个专家的权重，并实现Top-K选择和负载均衡。
+    """
+
+    def __init__(self, c1, num_experts, top_k=2, capacity_factor=1.25):
+        """
+        初始化门控网络
+
+        Args:
+            c1: 输入通道数
+            num_experts: 专家数量
+            top_k: 选择的专家数量
+            capacity_factor: 容量因子，用于负载均衡
+        """
+        super(SparseGating, self).__init__()
+        self.num_experts = int(num_experts)
+        self.top_k = int(top_k)  # 确保top_k是整数
+        self.capacity_factor = float(capacity_factor)
+
+        # 门控网络：全局平均池化 + 线性层
+        self.gate = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(c1, num_experts),
+            nn.Softmax(dim=-1)
+        )
+
+        # 噪声用于训练时的负载均衡
+        self.noise_std = 0.1
+
+    def forward(self, x):
+        """
+        前向传播
+
+        Returns:
+            gates: 门控权重 [batch_size, num_experts]
+            indices: 选中的专家索引 [batch_size, top_k]
+            load_balancing_loss: 负载均衡损失
+        """
+        batch_size = x.size(0)
+
+        # 计算门控权重
+        gates = self.gate(x)  # [batch_size, num_experts]
+
+        # 训练时添加噪声以促进负载均衡
+        if self.training:
+            noise = torch.randn_like(gates) * self.noise_std
+            gates = gates + noise
+            gates = F.softmax(gates, dim=-1)
+
+        # Top-K选择
+        top_k_gates, top_k_indices = torch.topk(gates, self.top_k, dim=-1)
+
+        # 重新归一化
+        top_k_gates = top_k_gates / (top_k_gates.sum(dim=-1, keepdim=True) + 1e-8)
+
+        # 计算负载均衡损失
+        load_balancing_loss = self._compute_load_balancing_loss(gates)
+
+        return top_k_gates, top_k_indices, load_balancing_loss
+
+    def _compute_load_balancing_loss(self, gates):
+        """计算负载均衡损失"""
+        # 计算每个专家的平均使用率
+        expert_usage = gates.mean(dim=0)  # [num_experts]
+
+        # 理想情况下每个专家的使用率应该是 1/num_experts
+        target_usage = 1.0 / self.num_experts
+
+        # 计算均方误差作为负载均衡损失
+        load_balancing_loss = F.mse_loss(expert_usage,
+                                       torch.full_like(expert_usage, target_usage))
+
+        return load_balancing_loss
+
+
+class MoELayer(nn.Module):
+    """
+    MoE层
+
+    结合多个专家网络和门控机制，实现稀疏激活的混合专家架构。
+    """
+
+    def __init__(self, c1, c2, num_experts=4, top_k=2, expert_type='conv',
+                 k=3, s=1, p=None, g=1, act=True):
+        """
+        初始化MoE层
+
+        Args:
+            c1: 输入通道数
+            c2: 输出通道数
+            num_experts: 专家数量
+            top_k: 激活的专家数量
+            expert_type: 专家类型
+            k, s, p, g, act: 卷积参数
+        """
+        super(MoELayer, self).__init__()
+        self.num_experts = num_experts
+        self.top_k = top_k
+
+        # 创建专家网络
+        self.experts = nn.ModuleList([
+            Expert(c1, c2, k, s, p, g, act, expert_type)
+            for _ in range(num_experts)
+        ])
+
+        # 门控网络
+        self.gate = SparseGating(c1, num_experts, top_k)
+
+        # 用于存储负载均衡损失（使用register_buffer避免deepcopy问题）
+        self.register_buffer('load_balancing_loss', torch.tensor(0.0))
+
+    def forward(self, x):
+        """前向传播"""
+        batch_size = x.size(0)
+
+        # 获取门控权重和选中的专家
+        top_k_gates, top_k_indices, load_balancing_loss = self.gate(x)
+        self.load_balancing_loss.data = load_balancing_loss.data
+
+        # 初始化输出
+        output = torch.zeros_like(self.experts[0](x))
+
+        # 对每个样本处理
+        for i in range(batch_size):
+            sample_output = torch.zeros_like(output[i:i+1])
+
+            # 对选中的专家进行加权求和
+            for j in range(self.top_k):
+                expert_idx = top_k_indices[i, j].item()
+                expert_weight = top_k_gates[i, j]
+
+                expert_output = self.experts[expert_idx](x[i:i+1])
+                sample_output += expert_weight * expert_output
+
+            output[i:i+1] = sample_output
+
+        return output
+
+
+class MoEBottleneck(nn.Module):
+    """
+    MoE瓶颈模块
+
+    将MoE层集成到瓶颈结构中，用于替换标准的Bottleneck。
+    """
+
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, num_experts=4, top_k=2):
+        """初始化MoE瓶颈模块"""
+        super(MoEBottleneck, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = MoELayer(c_, c2, num_experts, top_k, expert_type='conv', k=3, s=1)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """前向传播"""
+        if self.add:
+            return x + self.cv2(self.cv1(x))
+        else:
+            return self.cv2(self.cv1(x))
+
+
+class C3MoE(C3):
+    """
+    C3-MoE模块
+
+    将C3模块中的Bottleneck替换为MoEBottleneck，实现混合专家架构。
+    """
+
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, num_experts=4, top_k=2):
+        """初始化C3-MoE模块"""
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)  # hidden channels
+        self.m = nn.Sequential(*(MoEBottleneck(c_, c_, shortcut, g, e=1.0,
+                                             num_experts=num_experts, top_k=top_k)
+                               for _ in range(n)))
+
+    def get_load_balancing_loss(self):
+        """获取所有MoE层的负载均衡损失"""
+        total_loss = 0.0
+        count = 0
+        for module in self.m:
+            if hasattr(module, 'cv2') and hasattr(module.cv2, 'load_balancing_loss'):
+                loss_val = module.cv2.load_balancing_loss
+                if isinstance(loss_val, torch.Tensor):
+                    total_loss += loss_val.item()
+                else:
+                    total_loss += float(loss_val)
+                count += 1
+        return total_loss / max(count, 1)
+
+
+class MoEConv(nn.Module):
+    """
+    MoE卷积模块
+
+    直接使用MoE层作为卷积操作的替代。
+    """
+
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True,
+                 num_experts=4, top_k=2, expert_type='conv'):
+        """初始化MoE卷积模块"""
+        super(MoEConv, self).__init__()
+        self.moe = MoELayer(c1, c2, num_experts, top_k, expert_type, k, s, p, g, act)
+
+    def forward(self, x):
+        """前向传播"""
+        return self.moe(x)
+
+    def get_load_balancing_loss(self):
+        """获取负载均衡损失"""
+        loss_val = self.moe.load_balancing_loss
+        if isinstance(loss_val, torch.Tensor):
+            return loss_val.item()
+        else:
+            return float(loss_val)
+
+
+class AdaptiveMoE(nn.Module):
+    """
+    自适应MoE模块
+
+    根据输入特征的复杂度动态调整激活的专家数量。
+    """
+
+    def __init__(self, c1, c2, max_experts=6, min_top_k=1, max_top_k=3,
+                 k=3, s=1, p=None, g=1, act=True):
+        """
+        初始化自适应MoE模块
+
+        Args:
+            max_experts: 最大专家数量
+            min_top_k: 最小激活专家数
+            max_top_k: 最大激活专家数
+        """
+        super(AdaptiveMoE, self).__init__()
+        self.max_experts = max_experts
+        self.min_top_k = min_top_k
+        self.max_top_k = max_top_k
+
+        # 创建专家网络
+        self.experts = nn.ModuleList([
+            Expert(c1, c2, k, s, p, g, act, 'conv')
+            for _ in range(max_experts)
+        ])
+
+        # 复杂度评估网络
+        self.complexity_estimator = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(c1, 1),
+            nn.Sigmoid()
+        )
+
+        # 门控网络
+        self.gate = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(c1, max_experts),
+            nn.Softmax(dim=-1)
+        )
+
+    def forward(self, x):
+        """前向传播"""
+        batch_size = x.size(0)
+
+        # 评估输入复杂度
+        complexity = self.complexity_estimator(x)  # [batch_size, 1]
+
+        # 根据复杂度确定激活的专家数量
+        top_k = self.min_top_k + (complexity * (self.max_top_k - self.min_top_k)).round().int()
+        top_k = torch.clamp(top_k, self.min_top_k, self.max_top_k)
+
+        # 计算门控权重
+        gates = self.gate(x)  # [batch_size, max_experts]
+
+        # 初始化输出
+        output = torch.zeros_like(self.experts[0](x))
+
+        # 对每个样本处理
+        for i in range(batch_size):
+            sample_top_k = top_k[i].item()
+            sample_gates = gates[i]
+
+            # 选择Top-K专家
+            top_k_gates, top_k_indices = torch.topk(sample_gates, sample_top_k)
+            top_k_gates = top_k_gates / (top_k_gates.sum() + 1e-8)
+
+            sample_output = torch.zeros_like(output[i:i+1])
+
+            # 对选中的专家进行加权求和
+            for j in range(sample_top_k):
+                expert_idx = top_k_indices[j].item()
+                expert_weight = top_k_gates[j]
+
+                expert_output = self.experts[expert_idx](x[i:i+1])
+                sample_output += expert_weight * expert_output
+
+            output[i:i+1] = sample_output
+
+        return output
+
+# =====================================================================================
+# 混合MoE架构代码开始 (基于GUIDE/MOE2.md设计)
+# =====================================================================================
+
+class SharedExpert(nn.Module):
+    """
+    共享专家网络
+
+    所有输入都必须经过的"通识"专家，提供基础特征处理能力。
+    保证模型性能下限，加速收敛，降低门控网络学习负担。
+    """
+
+    def __init__(self, c1, c2, k=3, s=1, p=None, g=1, act=True):
+        """
+        初始化共享专家
+
+        Args:
+            c1: 输入通道数
+            c2: 输出通道数
+            k: 卷积核大小
+            s: 步长
+            p: 填充
+            g: 分组
+            act: 是否使用激活函数
+        """
+        super(SharedExpert, self).__init__()
+        # 共享专家使用标准的Bottleneck结构
+        c_ = c2 // 2
+        self.cv1 = Conv(c1, c_, 1, 1, act=act)
+        self.cv2 = Conv(c_, c2, k, s, p, g, act=act)
+
+    def forward(self, x):
+        """前向传播"""
+        return self.cv2(self.cv1(x))
+
+
+class HybridMoELayer(nn.Module):
+    """
+    混合MoE层
+
+    结合共享专家和稀疏专家的混合架构：
+    - 共享专家：所有输入都经过，提供基础特征
+    - 专业专家：通过门控选择，提供专业化特征
+    - 最终输出：共享特征 + 专业特征
+    """
+
+    def __init__(self, c1, c2, num_experts=12, top_k=2, shared_ratio=0.25,
+                 k=3, s=1, p=None, g=1, act=True):
+        """
+        初始化混合MoE层
+
+        Args:
+            c1: 输入通道数
+            c2: 输出通道数
+            num_experts: 专业专家数量
+            top_k: 激活的专业专家数量
+            shared_ratio: 共享专家通道比例
+            k, s, p, g, act: 卷积参数
+        """
+        super(HybridMoELayer, self).__init__()
+        self.num_experts = int(num_experts)
+        self.top_k = int(top_k)  # 确保top_k是整数
+        self.shared_ratio = float(shared_ratio)
+
+        # 计算通道分配
+        shared_channels = int(c2 * shared_ratio)
+        expert_channels = c2 - shared_channels
+
+        # 共享专家
+        self.shared_expert = SharedExpert(c1, shared_channels, k, s, p, g, act)
+
+        # 专业专家网络
+        self.experts = nn.ModuleList([
+            Expert(c1, expert_channels, k, s, p, g, act, 'bottleneck')
+            for _ in range(num_experts)
+        ])
+
+        # 门控网络
+        self.gate = SparseGating(c1, num_experts, top_k)
+
+        # 存储输出通道数，用于前向传播
+        self.expert_channels = expert_channels
+
+        # 用于存储负载均衡损失
+        self.register_buffer('load_balancing_loss', torch.tensor(0.0))
+
+    def forward(self, x):
+        """前向传播"""
+        batch_size = x.size(0)
+
+        # 1. 共享专家处理（所有输入都经过）
+        shared_output = self.shared_expert(x)
+
+        # 2. 门控网络选择专业专家
+        top_k_gates, top_k_indices, load_balancing_loss = self.gate(x)
+        self.load_balancing_loss.data = load_balancing_loss.data
+
+        # 3. 专业专家处理
+        expert_output = torch.zeros(batch_size, self.expert_channels,
+                                   x.size(2), x.size(3), device=x.device)
+
+        # 对每个样本处理
+        for i in range(batch_size):
+            sample_expert_output = torch.zeros_like(expert_output[i:i+1])
+
+            # 对选中的专家进行加权求和
+            for j in range(self.top_k):
+                expert_idx = top_k_indices[i, j].item()
+                expert_weight = top_k_gates[i, j]
+
+                expert_result = self.experts[expert_idx](x[i:i+1])
+                sample_expert_output += expert_weight * expert_result
+
+            expert_output[i:i+1] = sample_expert_output
+
+        # 4. 最终输出 = 共享特征 + 专业特征
+        final_output = torch.cat([shared_output, expert_output], dim=1)
+
+        return final_output
+
+
+class HybridMoEBottleneck(nn.Module):
+    """
+    混合MoE瓶颈模块
+
+    将混合MoE层集成到瓶颈结构中，用于替换标准的Bottleneck。
+    """
+
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5,
+                 num_experts=12, top_k=2, shared_ratio=0.25):
+        """初始化混合MoE瓶颈模块"""
+        super(HybridMoEBottleneck, self).__init__()
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = HybridMoELayer(c_, c2, num_experts, top_k, shared_ratio, k=3, s=1)
+        self.add = shortcut and c1 == c2
+
+    def forward(self, x):
+        """前向传播"""
+        if self.add:
+            return x + self.cv2(self.cv1(x))
+        else:
+            return self.cv2(self.cv1(x))
+
+
+class C3HybridMoE(C3):
+    """
+    C3-混合MoE模块
+
+    将C3模块中的Bottleneck替换为HybridMoEBottleneck，实现混合专家架构。
+    结合了共享专家的稳定性和专业专家的专业化能力。
+    """
+
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5,
+                 num_experts=12, top_k=2, shared_ratio=0.25):
+        """初始化C3-混合MoE模块"""
+        # 注意：这里不能直接调用super().__init__，因为我们需要重写self.m
+        # super().__init__(c1, c2, n, shortcut, g, e)
+
+        # 手动初始化C3的基础部分
+        super(C3, self).__init__()  # 调用nn.Module的初始化
+        c_ = int(c2 * e)  # hidden channels
+        self.cv1 = Conv(c1, c_, 1, 1)
+        self.cv2 = Conv(c1, c_, 1, 1)
+        self.cv3 = Conv(2 * c_, c2, 1)  # optional act=FReLU(c2)
+        # 创建混合MoE Bottleneck序列
+        self.m = nn.Sequential(*(HybridMoEBottleneck(c_, c_, shortcut, g, e=1.0,
+                                                   num_experts=num_experts,
+                                                   top_k=top_k,
+                                                   shared_ratio=shared_ratio)
+                               for _ in range(n)))
+
+    def get_load_balancing_loss(self):
+        """获取所有混合MoE层的负载均衡损失"""
+        total_loss = 0.0
+        count = 0
+        for module in self.m:
+            if hasattr(module, 'cv2') and hasattr(module.cv2, 'load_balancing_loss'):
+                loss_val = module.cv2.load_balancing_loss
+                if isinstance(loss_val, torch.Tensor):
+                    total_loss += loss_val.item()
+                else:
+                    total_loss += float(loss_val)
+                count += 1
+        return total_loss / max(count, 1)
+
+# =====================================================================================
+# 混合MoE架构代码结束
+# =====================================================================================
+
+
+# =====================================================================================
+# MoE架构代码结束
 # =====================================================================================

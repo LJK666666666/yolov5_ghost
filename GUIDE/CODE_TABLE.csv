@@ -1,0 +1,546 @@
+主标题,子标题,具体代码
+训练命令总览,基线模型 (yolov5s_),"python train.py --cfg models/yolov5s.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s_ --epochs 1000 --smooth-early-stop --smooth-patience 300 --batch-size 32"
+训练命令总览,Ghost+CA+WIoU模型 (yolov5s-ghost_123_),"python train.py --cfg models/yolov5s-ghost_12.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s-ghost_123_ --box-loss wiou --epochs 1000 --smooth-early-stop --smooth-patience 300 --batch-size 32"
+训练命令总览,Ghost模块模型 (yolov5s-ghost_1_),"python train.py --cfg models/yolov5s-ghost_1.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s-ghost_1_ --smooth-early-stop --epochs 1000 --smooth-patience 300 --batch-size 32"
+训练命令总览,CA注意力模型 (yolov5s-ghost_2_),"python train.py --cfg models/yolov5s-ghost_2.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s-ghost_2_ --smooth-early-stop --epochs 1000 --smooth-patience 300 --batch-size 32"
+训练命令总览,WIoU损失模型 (yolov5s-ghost_3_),"python train.py --cfg models/yolov5s.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s-ghost_3_ --box-loss wiou --smooth-early-stop --epochs 1000 --smooth-patience 300 --batch-size 32"
+训练命令总览,稀疏MoE模型 (yolov5s-sparse-moe_),"python train.py --cfg models/yolov5s-sparse-moe.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s-sparse-moe_ --smooth-early-stop --epochs 1000 --smooth-patience 300 --batch-size 32"
+训练命令总览,SE注意力模型 (yolov5s-se_),"python train.py --cfg models/yolov5s-se.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s-se_ --smooth-early-stop --epochs 1000 --smooth-patience 300 --batch-size 32"
+训练命令总览,大模型基线 (yolov5x_),"python train.py --cfg models/yolov5x.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5x.pt --project runs/sv6_train1000epoch_ --name yolov5x_ --smooth-early-stop --epochs 1000 --smooth-patience 300 --batch-size 16"
+训练命令总览,Focal Loss模型 (yolov5s-fl_),"python train.py --cfg models/yolov5s.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --hyp data/hyps/hyp.focal_loss.yaml --project runs/sv6_train1000epoch_ --name yolov5s-fl_ --epochs 1000 --smooth-early-stop --smooth-patience 300 --batch-size 32"
+训练命令总览,WFF模型 (yolov5s-wff_),"python train.py --cfg models/yolov5s-wff.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s-wff_ --epochs 1000 --smooth-early-stop --smooth-patience 300 --batch-size 32"
+训练命令总览,知识蒸馏模型 (yolov5s-distill_),"python train.py --cfg models/yolov5s.yaml --data data/SafetyVests.v6/data.yaml --weights yolov5s.pt --project runs/sv6_train1000epoch_ --name yolov5s-distill_ --epochs 1000 --smooth-early-stop --smooth-patience 300 --batch-size 32 --distillation --teacher-weights runs/sv6_train1000epoch_/yolov5x_/weights/best.pt --distill-alpha 0.7 --distill-temp 4.0"
+Ghost模块实现,GhostConv - Ghost卷积层,"class GhostConv(nn.Module):
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, act=True):
+        super().__init__()
+        c_ = c2 // 2
+        self.cv1 = Conv(c1, c_, k, s, p, g, act=act)
+        self.cv2 = Conv(c_, c_, 5, 1, p, c_, act=act)
+
+    def forward(self, x):
+        y = self.cv1(x)
+        return torch.cat((y, self.cv2(y)), 1)"
+Ghost模块实现,GhostBottleneck - Ghost瓶颈模块,"class GhostBottleneck(nn.Module):
+    def __init__(self, c1, c2, k=3, s=1):
+        super().__init__()
+        c_ = c2 // 2
+        self.conv = nn.Sequential(
+            GhostConv(c1, c_, 1, 1),
+            DWConv(c_, c_, k, s, act=False),
+            GhostConv(c_, c2, 1, 1, act=False),
+        )
+        self.shortcut = (
+            nn.Sequential(DWConv(c1, c1, k, s, act=False), Conv(c1, c2, 1, 1, act=False)) if s == 2 else nn.Identity()
+        )
+
+    def forward(self, x):
+        return self.conv(x) + self.shortcut(x)"
+Ghost模块实现,C3Ghost - Ghost C3模块,"class C3Ghost(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(GhostBottleneck(c_, c_) for _ in range(n)))"
+坐标注意力机制,CoordAtt实现,"class CoordAtt(nn.Module):
+    def __init__(self, inp, oup, reduction=32):
+        super(CoordAtt, self).__init__()
+        self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
+        self.pool_w = nn.AdaptiveAvgPool2d((1, None))
+        mip = max(8, inp // reduction)
+        self.conv1 = nn.Conv2d(inp, mip, kernel_size=1, stride=1, padding=0)
+        self.bn1 = nn.BatchNorm2d(mip)
+        self.act = h_swish()
+        self.conv_h = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+        self.conv_w = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        identity = x
+        n, c, h, w = x.size()
+        x_h = self.pool_h(x)
+        x_w = self.pool_w(x).permute(0, 1, 3, 2)
+        y = torch.cat([x_h, x_w], dim=2)
+        y = self.conv1(y)
+        y = self.bn1(y)
+        y = self.act(y)
+        x_h, x_w = torch.split(y, [h, w], dim=2)
+        x_w = x_w.permute(0, 1, 3, 2)
+        a_h = self.conv_h(x_h).sigmoid()
+        a_w = self.conv_w(x_w).sigmoid()
+        out = identity * a_w * a_h
+        return out"
+SE注意力机制,SEBlock - SE注意力模块,"class SEBlock(nn.Module):
+    def __init__(self, c1=None, reduction=16):
+        super(SEBlock, self).__init__()
+        self.c1 = c1
+        self.reduction = reduction
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        if c1 is not None:
+            self._build_fc_layers(c1)
+        else:
+            self.fc = None
+
+    def _build_fc_layers(self, c1):
+        self.fc = nn.Sequential(
+            nn.Linear(c1, c1 // self.reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(c1 // self.reduction, c1, bias=False),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        if self.fc is None:
+            self.c1 = c
+            self._build_fc_layers(c)
+            if x.is_cuda:
+                self.fc = self.fc.cuda()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)"
+SE注意力机制,SEBottleneck - SE瓶颈模块,"class SEBottleneck(Bottleneck):
+    def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, reduction=16):
+        super().__init__(c1, c2, shortcut, g, e)
+        self.se = SEBlock(c2, reduction)
+
+    def forward(self, x):
+        x = super().forward(x)
+        x = self.se(x)
+        return x"
+SE注意力机制,C3SE - SE C3模块,"class C3SE(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, reduction=16):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(SEBottleneck(c_, c_, shortcut, g, e=1.0, reduction=reduction) for _ in range(n)))"
+稀疏MoE实现,Expert - 专家网络,"class Expert(nn.Module):
+    def __init__(self, c1, c2, k=3, s=1, p=None, g=1, act=True, expert_type='conv'):
+        super(Expert, self).__init__()
+        self.expert_type = expert_type
+        if expert_type == 'conv':
+            self.expert = Conv(c1, c2, k, s, p, g, act)
+        elif expert_type == 'bottleneck':
+            self.expert = Bottleneck(c1, c2, shortcut=False, g=g, e=0.5)
+        elif expert_type == 'ghost':
+            self.expert = GhostBottleneck(c1, c2, k, s)
+        else:
+            self.expert = Conv(c1, c2, k, s, p, g, act)
+
+    def forward(self, x):
+        return self.expert(x)"
+稀疏MoE实现,SparseGating - 稀疏门控网络,"class SparseGating(nn.Module):
+    def __init__(self, c1, num_experts, top_k=2, capacity_factor=1.25):
+        super(SparseGating, self).__init__()
+        self.num_experts = int(num_experts)
+        self.top_k = int(top_k)
+        self.capacity_factor = float(capacity_factor)
+        self.gate = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(c1, num_experts),
+            nn.Softmax(dim=-1)
+        )
+        self.noise_std = 0.1
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        gate_scores = self.gate(x)
+        if self.training:
+            noise = torch.randn_like(gate_scores) * self.noise_std
+            gate_scores = gate_scores + noise
+        top_k_gates, top_k_indices = torch.topk(gate_scores, self.top_k, dim=-1)
+        top_k_gates = F.softmax(top_k_gates, dim=-1)
+        load_balancing_loss = self._compute_load_balancing_loss(gate_scores)
+        return top_k_gates, top_k_indices, load_balancing_loss
+
+    def _compute_load_balancing_loss(self, gate_scores):
+        mean_gate_scores = torch.mean(gate_scores, dim=0)
+        target_load = 1.0 / self.num_experts
+        load_balancing_loss = torch.var(mean_gate_scores) / (target_load ** 2)
+        return load_balancing_loss"
+稀疏MoE实现,MoELayer - MoE层,"class MoELayer(nn.Module):
+    def __init__(self, c1, c2, num_experts=4, top_k=2, expert_type='conv', k=3, s=1, p=None, g=1, act=True):
+        super(MoELayer, self).__init__()
+        self.num_experts = num_experts
+        self.top_k = top_k
+        self.experts = nn.ModuleList([
+            Expert(c1, c2, k, s, p, g, act, expert_type)
+            for _ in range(num_experts)
+        ])
+        self.gate = SparseGating(c1, num_experts, top_k)
+        self.register_buffer('load_balancing_loss', torch.tensor(0.0))
+
+    def forward(self, x):
+        batch_size, channels, height, width = x.size()
+        gates, indices, load_loss = self.gate(x)
+        self.load_balancing_loss = load_loss
+        output = torch.zeros(batch_size, self.experts[0].expert.cv1.conv.out_channels if hasattr(self.experts[0].expert, 'cv1') else self.experts[0].expert.conv.out_channels, height, width, device=x.device, dtype=x.dtype)
+        for i in range(self.top_k):
+            expert_indices = indices[:, i]
+            expert_weights = gates[:, i:i+1]
+            for expert_idx in range(self.num_experts):
+                mask = (expert_indices == expert_idx)
+                if mask.sum() == 0:
+                    continue
+                expert_input = x[mask]
+                expert_weight = expert_weights[mask]
+                if expert_input.size(0) > 0:
+                    expert_output = self.experts[expert_idx](expert_input)
+                    weighted_output = expert_output * expert_weight.view(-1, 1, 1, 1)
+                    output[mask] += weighted_output
+        return output"
+稀疏MoE实现,C3MoE - MoE C3模块,"class C3MoE(C3):
+    def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, num_experts=4, top_k=2):
+        super().__init__(c1, c2, n, shortcut, g, e)
+        c_ = int(c2 * e)
+        self.m = nn.Sequential(*(MoEBottleneck(c_, c_, shortcut, g, e=1.0, num_experts=num_experts, top_k=top_k) for _ in range(n)))
+
+    def get_load_balancing_loss(self):
+        total_loss = 0.0
+        count = 0
+        for module in self.m:
+            if hasattr(module, 'cv2') and hasattr(module.cv2, 'load_balancing_loss'):
+                loss_val = module.cv2.load_balancing_loss
+                if isinstance(loss_val, torch.Tensor):
+                    total_loss += loss_val.item()
+                else:
+                    total_loss += float(loss_val)
+                count += 1
+        return total_loss / max(count, 1)"
+加权特征融合,WeightedFeatureFusion实现,"class WeightedFeatureFusion(nn.Module):
+    def __init__(self, num_inputs, eps=1e-4):
+        super(WeightedFeatureFusion, self).__init__()
+        self.num_inputs = num_inputs
+        self.eps = eps
+        self.weights = nn.Parameter(torch.ones(num_inputs, dtype=torch.float32), requires_grad=True)
+
+    def forward(self, x):
+        w = torch.clamp(self.weights, min=0.0)
+        w = w / (torch.sum(w, dim=0) + self.eps)
+        out = 0
+        for i in range(self.num_inputs):
+            out += x[i] * w[i]
+        return out"
+WIoU损失函数,WIoU实现,"class WIoU:
+    def __init__(self, pred, target, eps=1e-7, alpha=2.0, beta=4.0):
+        self.eps = eps
+        self.alpha = alpha
+        self.beta = beta
+        self.pred = pred
+        self.target = target
+        self.iou = bbox_iou(pred, target, xywh=True, CIoU=False).squeeze()
+
+    @property
+    def wiou(self):
+        pred_x1, pred_y1 = self.pred[:, 0] - self.pred[:, 2] / 2, self.pred[:, 1] - self.pred[:, 3] / 2
+        pred_x2, pred_y2 = self.pred[:, 0] + self.pred[:, 2] / 2, self.pred[:, 1] + self.pred[:, 3] / 2
+        target_x1, target_y1 = self.target[:, 0] - self.target[:, 2] / 2, self.target[:, 1] - self.target[:, 3] / 2
+        target_x2, target_y2 = self.target[:, 0] + self.target[:, 2] / 2, self.target[:, 1] + self.target[:, 3] / 2
+        dist = torch.sum((self.pred[:, :2] - self.target[:, :2]) ** 2, dim=1)
+        cw = torch.max(pred_x2, target_x2) - torch.min(pred_x1, target_x1)
+        ch = torch.max(pred_y2, target_y2) - torch.min(pred_y1, target_y1)
+        r_wiou = torch.exp(dist / (cw ** 2 + ch ** 2 + self.eps))
+        beta = (self.iou.detach() / self.alpha).pow(self.beta)
+        loss_wiou = r_wiou * (1 - self.iou) * beta
+        return loss_wiou.mean()"
+Focal Loss实现,FocalLoss实现,"class FocalLoss(nn.Module):
+    def __init__(self, loss_fcn, gamma=1.5, alpha=0.25):
+        super().__init__()
+        self.loss_fcn = loss_fcn
+        self.gamma = gamma
+        self.alpha = alpha
+        self.reduction = loss_fcn.reduction
+        self.loss_fcn.reduction = 'none'
+
+    def forward(self, pred, true):
+        loss = self.loss_fcn(pred, true)
+        pred_prob = torch.sigmoid(pred)
+        p_t = true * pred_prob + (1 - true) * (1 - pred_prob)
+        alpha_factor = true * self.alpha + (1 - true) * (1 - self.alpha)
+        modulating_factor = (1.0 - p_t) ** self.gamma
+        loss *= alpha_factor * modulating_factor
+        if self.reduction == 'mean':
+            return loss.mean()
+        elif self.reduction == 'sum':
+            return loss.sum()
+        else:
+            return loss"
+知识蒸馏实现,DistillationLoss - 蒸馏损失函数,"class DistillationLoss(nn.Module):
+    def __init__(self, temperature=4.0, alpha=0.7):
+        super(DistillationLoss, self).__init__()
+        self.temperature = temperature
+        self.alpha = alpha
+        self.kl_div = nn.KLDivLoss(reduction='batchmean')
+
+    def forward(self, student_outputs, teacher_outputs, targets, hard_loss):
+        soft_loss = 0.0
+        for i, (student_out, teacher_out) in enumerate(zip(student_outputs, teacher_outputs)):
+            student_cls = student_out[..., 4:]
+            teacher_cls = teacher_out[..., 4:]
+            student_soft = F.log_softmax(student_cls / self.temperature, dim=-1)
+            teacher_soft = F.softmax(teacher_cls / self.temperature, dim=-1)
+            kl_loss = self.kl_div(student_soft, teacher_soft) * (self.temperature ** 2)
+            soft_loss += kl_loss
+        soft_loss = soft_loss / len(student_outputs)
+        total_loss = (1 - self.alpha) * hard_loss + self.alpha * soft_loss
+        return total_loss, soft_loss"
+知识蒸馏实现,训练时的蒸馏实现,"# 加载教师模型
+teacher_model = None
+if opt.distillation and opt.teacher_weights:
+    teacher_ckpt = torch.load(opt.teacher_weights, map_location='cpu')
+    teacher_nc = teacher_ckpt['model'].yaml.get('nc', nc)
+    teacher_model = Model(teacher_ckpt['model'].yaml, ch=3, nc=teacher_nc, anchors=hyp.get('anchors')).to(device)
+    teacher_csd = teacher_ckpt['model'].float().state_dict()
+    teacher_model.load_state_dict(teacher_csd, strict=False)
+    teacher_model.train()
+    for param in teacher_model.parameters():
+        param.requires_grad = False
+
+# 训练循环中的蒸馏
+with torch.amp.autocast('cuda', enabled=amp):
+    pred = model(imgs)
+    teacher_pred = None
+    if opt.distillation and teacher_model is not None:
+        with torch.no_grad():
+            teacher_pred = teacher_model(imgs)
+    if opt.distillation and teacher_pred is not None:
+        loss, loss_items = compute_loss.__call_with_distillation__(pred, teacher_pred, targets.to(device))
+    else:
+        loss, loss_items = compute_loss(pred, targets.to(device))"
+平滑早停机制,SmoothEarlyStopping实现,"class SmoothEarlyStopping:
+    def __init__(self, patience=30, window_size=10, min_delta=0.0001):
+        self.patience = patience or float('inf')
+        self.window_size = window_size
+        self.min_delta = min_delta
+        self.fitness_history = []
+        self.best_avg_fitness = 0.0
+        self.best_avg_epoch = 0
+        self.current_avg_fitness = 0.0
+        self.possible_stop = False
+        self.total_epochs = 0
+        self.improvement_count = 0
+
+    def __call__(self, epoch, fitness):
+        self.total_epochs = epoch + 1
+        fitness_scalar = float(fitness.item()) if hasattr(fitness, 'item') else float(fitness)
+        self.fitness_history.append(fitness_scalar)
+        if len(self.fitness_history) > self.window_size:
+            self.fitness_history.pop(0)
+        self.current_avg_fitness = sum(self.fitness_history) / len(self.fitness_history)
+        if len(self.fitness_history) >= self.window_size:
+            if self.current_avg_fitness > (self.best_avg_fitness + self.min_delta):
+                self.best_avg_fitness = self.current_avg_fitness
+                self.best_avg_epoch = epoch
+                self.improvement_count += 1
+        else:
+            if self.current_avg_fitness > self.best_avg_fitness:
+                self.best_avg_fitness = self.current_avg_fitness
+                self.best_avg_epoch = epoch
+                self.improvement_count += 1
+        delta = epoch - self.best_avg_epoch
+        self.possible_stop = delta >= (self.patience - 1)
+        stop = delta >= self.patience
+        if stop:
+            self._log_stopping_info(epoch, fitness)
+        return stop"
+数据增强实现,Mosaic数据增强,"def load_mosaic(self, index):
+    labels4, segments4 = [], []
+    s = self.img_size
+    yc, xc = (int(random.uniform(-x, 2 * s + x)) for x in self.mosaic_border)
+    indices = [index] + random.choices(self.indices, k=3)
+    random.shuffle(indices)
+    for i, index in enumerate(indices):
+        img, _, (h, w) = self.load_image(index)
+        if i == 0:  # top left
+            img4 = np.full((s * 2, s * 2, img.shape[2]), 114, dtype=np.uint8)
+            x1a, y1a, x2a, y2a = max(xc - w, 0), max(yc - h, 0), xc, yc
+            x1b, y1b, x2b, y2b = w - (x2a - x1a), h - (y2a - y1a), w, h
+        elif i == 1:  # top right
+            x1a, y1a, x2a, y2a = xc, max(yc - h, 0), min(xc + w, s * 2), yc
+            x1b, y1b, x2b, y2b = 0, h - (y2a - y1a), min(w, x2a - x1a), h
+        # ... 其他位置处理
+        img4[y1a:y2a, x1a:x2a] = img[y1b:y2b, x1b:x2b]
+        padw = x1a - x1b
+        padh = y1a - y1b
+        labels, segments = self.labels[index].copy(), self.segments[index].copy()
+        if labels.size:
+            labels[:, 1:] = xywhn2xyxy(labels[:, 1:], w, h, padw, padh)
+            segments = [xyn2xy(x, w, h, padw, padh) for x in segments]
+        labels4.append(labels)
+        segments4.append(segments)
+    return img4, labels4"
+数据增强实现,Mixup数据增强,"def mixup(im, labels, im2, labels2):
+    r = np.random.beta(32.0, 32.0)
+    im = (im * r + im2 * (1 - r)).astype(np.uint8)
+    labels = np.concatenate((labels, labels2), 0)
+    return im, labels"
+数据增强实现,随机透视变换,"def random_perspective(im, targets=(), segments=(), degrees=10, translate=.1, scale=.1, shear=10, perspective=0.0, border=(0, 0)):
+    height = im.shape[0] + border[0] * 2
+    width = im.shape[1] + border[1] * 2
+    # Center
+    C = np.eye(3)
+    C[0, 2] = -im.shape[1] / 2
+    C[1, 2] = -im.shape[0] / 2
+    # Perspective
+    P = np.eye(3)
+    P[2, 0] = random.uniform(-perspective, perspective)
+    P[2, 1] = random.uniform(-perspective, perspective)
+    # Rotation and Scale
+    R = np.eye(3)
+    a = random.uniform(-degrees, degrees)
+    s = random.uniform(1 - scale, 1 + scale)
+    R[:2] = cv2.getRotationMatrix2D(angle=a, center=(0, 0), scale=s)
+    # Shear
+    S = np.eye(3)
+    S[0, 1] = math.tan(random.uniform(-shear, shear) * math.pi / 180)
+    S[1, 0] = math.tan(random.uniform(-shear, shear) * math.pi / 180)
+    # Translation
+    T = np.eye(3)
+    T[0, 2] = random.uniform(0.5 - translate, 0.5 + translate) * width
+    T[1, 2] = random.uniform(0.5 - translate, 0.5 + translate) * height
+    # Combined rotation matrix
+    M = T @ S @ R @ P @ C
+    if (border[0] != 0) or (border[1] != 0) or (M != np.eye(3)).any():
+        if perspective:
+            im = cv2.warpPerspective(im, M, dsize=(width, height), borderValue=(114, 114, 114))
+        else:
+            im = cv2.warpAffine(im, M[:2], dsize=(width, height), borderValue=(114, 114, 114))
+    return im, targets"
+数据增强实现,HSV颜色空间增强,"def augment_hsv(im, hgain=0.5, sgain=0.5, vgain=0.5):
+    if hgain or sgain or vgain:
+        r = np.random.uniform(-1, 1, 3) * [hgain, sgain, vgain] + 1
+        hue, sat, val = cv2.split(cv2.cvtColor(im, cv2.COLOR_BGR2HSV))
+        dtype = im.dtype
+        x = np.arange(0, 256, dtype=r.dtype)
+        lut_hue = ((x * r[0]) % 180).astype(dtype)
+        lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
+        lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
+        im_hsv = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
+        cv2.cvtColor(im_hsv, cv2.COLOR_HSV2BGR, dst=im)"
+模型配置文件,Ghost+CA组合模型 (yolov5s-ghost_12.yaml),"backbone:
+  [
+    [-1, 1, GhostConv, [64, 6, 2, 2]], # 0-P1/2
+    [-1, 1, GhostConv, [128, 3, 2]], # 1-P2/4
+    [-1, 3, C3Ghost, [128]], # 2
+    [-1, 1, GhostConv, [256, 3, 2]], # 3-P3/8
+    [-1, 6, C3Ghost, [256]], # 4
+    [-1, 1, CoordAtt, [256]], # 5 <--- 添加CA, 处理256通道
+    [-1, 1, GhostConv, [512, 3, 2]], # 6-P4/16
+    [-1, 9, C3Ghost, [512]], # 7
+    [-1, 1, CoordAtt, [512]], # 8 <--- 添加CA, 处理512通道
+    [-1, 1, GhostConv, [1024, 3, 2]], # 9-P5/32
+    [-1, 3, C3Ghost, [1024]], # 10
+    [-1, 1, SPPF, [1024, 5]], # 11
+    [-1, 1, CoordAtt, [1024]], # 12 <--- 添加CA, 处理1024通道
+  ]"
+模型配置文件,稀疏MoE模型 (yolov5s-sparse-moe.yaml),"backbone:
+  [
+    [-1, 1, Conv, [64, 6, 2, 2]], # 0-P1/2
+    [-1, 1, Conv, [128, 3, 2]], # 1-P2/4 (保持标准卷积)
+    [-1, 3, C3, [128]], # 2 (保持标准C3)
+    [-1, 1, Conv, [256, 3, 2]], # 3-P3/8 (保持标准卷积)
+    [-1, 6, C3MoE, [256, True, 1, 0.5, 16, 1]], # 4 (超稀疏MoE: 16专家激活1个, 激活率6.25%)
+    [-1, 1, Conv, [512, 3, 2]], # 5-P4/16 (保持标准卷积)
+    [-1, 9, C3MoE, [512, True, 1, 0.5, 24, 1]], # 6 (超稀疏MoE: 24专家激活1个, 激活率4.2%)
+    [-1, 1, Conv, [1024, 3, 2]], # 7-P5/32 (保持标准卷积)
+    [-1, 3, C3MoE, [1024, True, 1, 0.5, 32, 1]], # 8 (超稀疏MoE: 32专家激活1个, 激活率3.1%)
+    [-1, 1, SPPF, [1024, 5]], # 9
+  ]"
+模型配置文件,SE注意力模型 (yolov5s-se.yaml),"backbone:
+  [
+    [-1, 1, Conv, [64, 6, 2, 2]], # 0-P1/2
+    [-1, 1, Conv, [128, 3, 2]], # 1-P2/4
+    [-1, 3, C3, [128]], # 2
+    [-1, 1, SEBlock, []], # 3-SE attention after C3 (自动获取通道数)
+    [-1, 1, Conv, [256, 3, 2]], # 4-P3/8
+    [-1, 6, C3, [256]], # 5
+    [-1, 1, SEBlock, []], # 6-SE attention after C3 (自动获取通道数)
+    [-1, 1, Conv, [512, 3, 2]], # 7-P4/16
+    [-1, 9, C3, [512]], # 8
+    [-1, 1, SEBlock, []], # 9-SE attention after C3 (自动获取通道数)
+    [-1, 1, Conv, [1024, 3, 2]], # 10-P5/32
+    [-1, 3, C3, [1024]], # 11
+    [-1, 1, SPPF, [1024, 5]], # 12
+    [-1, 1, SEBlock, []], # 13-SE attention after SPPF (自动获取通道数)
+  ]"
+模型配置文件,WFF模型 (yolov5s-wff.yaml),"head: [
+    [-1, 1, Conv, [512, 1, 1]], # 10
+    [-1, 1, nn.Upsample, [None, 2, 'nearest']], # 11
+    # 🎯 创新点1: 使用加权特征融合替代简单拼接
+    [6, 1, Conv, [512, 1, 1]], # 12: 将P4特征图从256调整为512通道
+    [[-1, 11], 1, WeightedFeatureFusion, [2]], # 13: 加权融合 P4(512) + 上采样特征(512)
+    [-1, 3, C3, [512, False]], # 14
+    [-1, 1, Conv, [256, 1, 1]], # 15
+    [-1, 1, nn.Upsample, [None, 2, 'nearest']], # 16
+    # 🎯 创新点2: P3层的加权特征融合
+    [4, 1, Conv, [256, 1, 1]], # 17: 将P3特征图从128调整为256通道
+    [[-1, 16], 1, WeightedFeatureFusion, [2]], # 18: 加权融合 P3(256) + 上采样特征(256)
+    [-1, 3, C3, [256, False]], # 19 (P3/8-small)
+]"
+超参数配置,推荐数据增强配置 (hyp.recommand.yaml),"# 学习率和优化器配置
+lr0: 0.01  # initial learning rate
+lrf: 0.1  # final OneCycleLR learning rate
+momentum: 0.937  # SGD momentum/Adam beta1
+weight_decay: 0.0005  # optimizer weight decay
+warmup_epochs: 3.0  # warmup epochs
+warmup_momentum: 0.8  # warmup initial momentum
+warmup_bias_lr: 0.1  # warmup initial bias lr
+
+# 损失函数权重配置
+box: 0.05  # box loss gain
+cls: 0.5   # cls loss gain
+cls_pw: 1.0  # cls BCELoss positive_weight
+obj: 1.0  # obj loss gain
+obj_pw: 1.0  # obj BCELoss positive_weight
+iou_t: 0.20  # IoU training threshold
+anchor_t: 4.0  # anchor-multiple threshold
+fl_gamma: 0.0  # focal loss gamma
+
+# 数据增强配置
+hsv_h: 0.015  # HSV色调增强 - 轻微调整，保持安全背心颜色特征
+hsv_s: 0.7    # HSV饱和度增强 - 较强增强，适应不同光照条件
+hsv_v: 0.4    # HSV明度增强 - 中等增强，模拟不同亮度环境
+degrees: 10.0     # 图像旋转角度 - 模拟不同拍摄角度
+translate: 0.1    # 图像平移 - 模拟目标位置变化
+scale: 0.5        # 图像缩放 - 模拟不同距离的目标
+shear: 2.0        # 图像剪切 - 增加几何变换多样性
+perspective: 0.0  # 透视变换 - 保持为0，避免过度变形
+flipud: 0.0  # 上下翻转概率 - 人体检测不适合上下翻转
+fliplr: 0.5  # 左右翻转概率 - 50%概率，增加数据多样性
+mosaic: 1.0      # Mosaic增强概率 - 100%使用，提升小目标检测能力
+mixup: 0.1       # Mixup增强概率 - 增加样本多样性
+copy_paste: 0.0  # Copy-Paste增强概率 - 避免不自然的组合"
+超参数配置,Focal Loss配置 (hyp.focal_loss.yaml),"# 唯一修改：Focal Loss 难例挖掘配置
+fl_gamma: 2.0  # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
+# fl_gamma = 0: 等同于标准BCE损失
+# fl_gamma = 2.0: 强力难例关注，适合复杂背景的安全背心检测
+# Focal Loss公式: FL(p_t) = -α(1-p_t)^γ * log(p_t)
+# γ 越大，对难例（低概率样本）的关注越强"
+训练参数说明,通用参数,"--epochs 1000: 训练1000个epoch
+--smooth-early-stop: 启用平滑早停机制
+--smooth-patience 300: 平滑早停耐心值300个epoch
+--batch-size 32/16: 批次大小（小模型32，大模型16）
+--img-size 640: 输入图像尺寸640x640"
+训练参数说明,数据增强参数,"颜色增强: hsv_h=0.015, hsv_s=0.7, hsv_v=0.4
+几何变换: degrees=10.0, translate=0.1, scale=0.5, shear=2.0
+翻转策略: fliplr=0.5, flipud=0.0
+高级增强: mosaic=1.0, mixup=0.1, copy_paste=0.0
+这些参数经过专门调优，适合安全背心检测任务的特点"
+训练参数说明,特殊参数,"--box-loss wiou: 启用WIoU损失函数
+--hyp data/hyps/hyp.focal_loss.yaml: 使用Focal Loss超参数
+--distillation: 启用知识蒸馏
+--teacher-weights: 教师模型权重路径
+--distill-alpha 0.7: 蒸馏损失权重
+--distill-temp 4.0: 蒸馏温度参数"
+核心创新点总结,模型架构改进,"1. Ghost模块: 通过Ghost卷积减少50%参数量，保持检测精度
+2. 坐标注意力: 捕获位置相关信息，增强特征表示
+3. SE注意力: 学习通道间依赖关系，重新校准特征响应
+4. 稀疏MoE: 大幅提升模型容量，保持计算效率
+5. 加权特征融合: 自适应学习特征重要性权重"
+核心创新点总结,损失函数改进,"6. WIoU损失: 动态聚焦机制，提升小目标检测
+7. Focal Loss: 解决类别不平衡，关注难例样本"
+核心创新点总结,训练策略改进,"8. 知识蒸馏: 教师模型指导，提升小模型性能
+9. 平滑早停: 基于滑动窗口，提供稳定的早停判断
+10. 优化数据增强: 针对安全背心检测任务定制的数据增强策略"
+核心创新点总结,数据增强策略亮点,"任务导向设计: 专门针对安全背心检测特点进行参数调优
+多层次增强: 涵盖颜色、几何、高级增强等多个维度
+平衡策略: 在增加多样性和保持特征完整性之间找到最佳平衡
+实用性考虑: 避免不符合实际场景的增强方式（如上下翻转）
+关键配置优化: Mosaic增强100%启用，适度几何变换，强化饱和度增强，引入Mixup增强"

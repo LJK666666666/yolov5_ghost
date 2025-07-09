@@ -16,6 +16,8 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill
 
 # 添加项目根目录到路径
 FILE = Path(__file__).resolve()
@@ -31,7 +33,7 @@ def get_available_train_folders():
     if runs_dir.exists():
         for folder in runs_dir.iterdir():
             if (folder.is_dir() and
-                folder.name.startswith('train') and
+                ('train' in folder.name or 'rail_train' in folder.name) and
                 'epoch' in folder.name and
                 not '_test_' in folder.name):  # 排除测试结果文件夹
                 # 检查是否包含模型文件
@@ -127,30 +129,50 @@ def parse_val_output(output_text):
 
     return results
 
-def run_validation(model_info, output_dir, conf_thres=0.001, iou_thres=0.6):
+def calculate_ra_map(map50_95, no_safety_vest_recall):
+    """
+    计算RA-mAP指标
+
+    RA-mAP = 0.4 * mAP@0.5:0.95 + 0.6 * NO-Safety Vest Recall
+
+    Args:
+        map50_95 (float): mAP@0.5:0.95 值
+        no_safety_vest_recall (float): NO-Safety Vest 召回率
+
+    Returns:
+        float: RA-mAP 值，如果输入无效则返回None
+    """
+    if (isinstance(map50_95, (int, float)) and
+        isinstance(no_safety_vest_recall, (int, float))):
+        return 0.4 * map50_95 + 0.6 * no_safety_vest_recall
+    return None
+
+def run_validation(model_info, output_dir, data_yaml, conf_thres=0.001, iou_thres=0.6, eval_split='val'):
     """运行验证并保存结果
 
     Args:
         model_info (dict): 模型信息字典
         output_dir (Path): 输出目录
+        data_yaml (str): 数据集配置文件路径
         conf_thres (float): 置信度阈值
         iou_thres (float): IoU阈值
+        eval_split (str): 评估数据集选择，'val' 或 'test'
     """
     model_name = model_info['name']
     model_path = model_info['path']
 
     print(f"正在测试模型: {model_name}")
 
-    # 运行验证命令 - 使用val模式而不是test模式
+    # 运行验证命令 - 根据eval_split参数选择数据集
     cmd = [
         "python", "val.py",
         "--weights", model_path,
-        "--data", "data/SafetyVests.v6/data.yaml",
+        "--data", data_yaml,
         "--img", "640",
         "--batch", "16",
         "--conf", str(conf_thres),
         "--iou", str(iou_thres),
-        "--task", "val",  # 改为val模式
+        "--task", eval_split,  # 使用指定的数据集 (val 或 test)
         "--save-txt",
         "--save-conf",
         "--save-json",
@@ -188,27 +210,70 @@ def parse_results(model_name, output_dir):
         print(f"警告: 未找到结果文件 {results_csv}")
         return None
 
-def save_error_images(model_name, output_dir, base_output_dir):
+def save_error_images(model_name, output_dir, base_output_dir, data_yaml, eval_split='test'):
     """保存预测错误的图片"""
     results_dir = Path(output_dir) / model_name
     error_dir = Path(base_output_dir) / "error_images" / model_name
     error_dir.mkdir(parents=True, exist_ok=True)
-    
-    # 数据集路径
-    dataset_path = Path("data/SafetyVests.v6/valid")
-    labels_path = dataset_path / "labels"
-    
+
+    # 从data.yaml文件中获取对应数据集路径
+    import yaml
+    try:
+        with open(data_yaml, 'r') as f:
+            data_config = yaml.safe_load(f)
+
+        # 根据eval_split参数获取对应的数据集路径
+        if eval_split == 'test':
+            dataset_path_key = 'test'
+        else:
+            dataset_path_key = 'val'
+
+        val_path = data_config.get(dataset_path_key, data_config.get('valid', ''))
+        if val_path:
+            # 检查路径是否为绝对路径
+            val_path_obj = Path(val_path)
+            if val_path_obj.is_absolute():
+                dataset_path = val_path_obj
+            else:
+                # 如果是相对路径，检查是否以项目根目录为基准
+                if val_path.startswith('data/'):
+                    # 直接使用该路径（相对于项目根目录）
+                    dataset_path = Path(val_path)
+                else:
+                    # 相对于data.yaml文件的目录
+                    data_yaml_dir = Path(data_yaml).parent
+                    dataset_path = data_yaml_dir / val_path
+        else:
+            print(f"警告: 无法从 {data_yaml} 中获取验证集路径")
+            return
+    except Exception as e:
+        print(f"警告: 读取数据配置文件失败 {data_yaml}: {e}")
+        return
+
+    # 验证集路径应该指向包含images和labels的目录
+    # 如果dataset_path指向images目录，需要获取其父目录
+    if dataset_path.name == 'images':
+        dataset_base = dataset_path.parent
+        labels_path = dataset_base / "labels"
+        images_path = dataset_path
+    else:
+        # 如果dataset_path是基础目录，添加子目录
+        labels_path = dataset_path / "labels"
+        images_path = dataset_path / "images"
+
     # 获取所有预测结果文件
     pred_labels_dir = results_dir / "labels"
     if not pred_labels_dir.exists():
         print(f"警告: 预测标签目录不存在 {pred_labels_dir}")
         return
-    
+
     pred_files = list(pred_labels_dir.glob("*.txt"))
     error_images = set()
-    
+
     print(f"正在分析 {len(pred_files)} 个预测结果文件...")
-    
+    print(f"真实标签路径: {labels_path}")
+    print(f"图片路径: {images_path}")
+
     for pred_file in pred_files:
         # 获取对应的真实标签文件
         gt_file = labels_path / pred_file.name
@@ -312,7 +377,7 @@ def save_error_images(model_name, output_dir, base_output_dir):
                 
                 for possible_name in possible_names:
                     # 检查在数据集目录中是否有对应的图片
-                    dataset_image = dataset_path / "images" / possible_name
+                    dataset_image = images_path / possible_name
                     if dataset_image.exists():
                         error_images.add(dataset_image)
                         break
@@ -336,7 +401,7 @@ def save_error_images(model_name, output_dir, base_output_dir):
             f.write("所有预测结果都是正确的\n")
         print("未发现预测错误，已创建说明文件")
 
-def create_summary_report(models_results, output_dir, model_type='best', train_folder='train200epoch'):
+def create_summary_report(models_results, output_dir, model_type='best', train_folder='train200epoch', data_yaml='data/SafetyVests.v6/data.yaml', eval_split='val'):
     """创建汇总报告
 
     Args:
@@ -344,6 +409,8 @@ def create_summary_report(models_results, output_dir, model_type='best', train_f
         output_dir (Path): 输出目录
         model_type (str): 模型类型，'best' 或 'last'
         train_folder (str): 训练文件夹名称
+        data_yaml (str): 数据集配置文件路径
+        eval_split (str): 评估数据集，'val' 或 'test'
     """
     summary_file = Path(output_dir) / "summary_report.txt"
 
@@ -352,16 +419,17 @@ def create_summary_report(models_results, output_dir, model_type='best', train_f
         f.write(f"YOLOv5 {model_type.upper()}模型测试汇总报告\n")
         f.write("=" * 100 + "\n")
         f.write(f"测试时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write(f"测试数据集: data/SafetyVests.v6/valid\n")
+        f.write(f"测试数据集: {data_yaml}\n")
+        f.write(f"评估数据集: {eval_split.upper()} ({'验证集' if eval_split == 'val' else '测试集'})\n")
         f.write(f"训练文件夹: runs/{train_folder}\n")
         f.write(f"模型类型: {model_type}.pt\n")
         f.write(f"模型数量: {len(models_results)}\n\n")
 
         # 创建整体性能结果表格
         f.write("整体模型性能对比:\n")
-        f.write("-" * 100 + "\n")
-        f.write(f"{'模型名称':<20} {'Precision':<12} {'Recall':<12} {'mAP@0.5':<12} {'mAP@0.5:0.95':<15}\n")
-        f.write("-" * 100 + "\n")
+        f.write("-" * 120 + "\n")
+        f.write(f"{'模型名称':<20} {'Precision':<12} {'Recall':<12} {'mAP@0.5':<12} {'mAP@0.5:0.95':<15} {'RA-mAP':<12}\n")
+        f.write("-" * 120 + "\n")
 
         for model_name, results in models_results.items():
             if results:
@@ -369,15 +437,20 @@ def create_summary_report(models_results, output_dir, model_type='best', train_f
                 recall = results.get('recall', 'N/A')
                 map50 = results.get('map50', 'N/A')
                 map50_95 = results.get('map50_95', 'N/A')
+                no_vest_recall = results.get('no_safety_vest_recall', 'N/A')
+
+                # 计算RA-mAP
+                ra_map = calculate_ra_map(map50_95, no_vest_recall)
 
                 if isinstance(precision, (int, float)):
-                    f.write(f"{model_name:<20} {precision:<12.4f} {recall:<12.4f} {map50:<12.4f} {map50_95:<15.4f}\n")
+                    ra_map_str = f"{ra_map:.4f}" if ra_map is not None else 'N/A'
+                    f.write(f"{model_name:<20} {precision:<12.4f} {recall:<12.4f} {map50:<12.4f} {map50_95:<15.4f} {ra_map_str:<12}\n")
                 else:
-                    f.write(f"{model_name:<20} {'N/A':<12} {'N/A':<12} {'N/A':<12} {'N/A':<15}\n")
+                    f.write(f"{model_name:<20} {'N/A':<12} {'N/A':<12} {'N/A':<12} {'N/A':<15} {'N/A':<12}\n")
             else:
-                f.write(f"{model_name:<20} {'N/A':<12} {'N/A':<12} {'N/A':<12} {'N/A':<15}\n")
+                f.write(f"{model_name:<20} {'N/A':<12} {'N/A':<12} {'N/A':<12} {'N/A':<15} {'N/A':<12}\n")
 
-        f.write("-" * 100 + "\n\n")
+        f.write("-" * 120 + "\n\n")
 
         # 创建NO-Safety Vest类别专门的性能表格
         f.write("NO-Safety Vest 类别性能对比:\n")
@@ -423,6 +496,19 @@ def create_summary_report(models_results, output_dir, model_type='best', train_f
                     best_no_vest_recall = no_vest_recall
                     best_model_no_vest_recall = model_name
 
+        # 找出RA-mAP最佳的模型
+        best_model_ra_map = None
+        best_ra_map = 0
+
+        for model_name, results in models_results.items():
+            if results:
+                map50_95 = results.get('map50_95', 0)
+                no_vest_recall = results.get('no_safety_vest_recall', 0)
+                ra_map = calculate_ra_map(map50_95, no_vest_recall)
+                if ra_map is not None and ra_map > best_ra_map:
+                    best_ra_map = ra_map
+                    best_model_ra_map = model_name
+
         f.write("最佳模型分析:\n")
         f.write("-" * 50 + "\n")
         if best_model_overall:
@@ -433,6 +519,11 @@ def create_summary_report(models_results, output_dir, model_type='best', train_f
             f.write(f"NO-Safety Vest召回率最佳模型: {best_model_no_vest_recall}\n")
             f.write(f"最佳NO-Safety Vest召回率: {best_no_vest_recall:.4f}\n\n")
 
+        if best_model_ra_map:
+            f.write(f"RA-mAP最佳模型: {best_model_ra_map}\n")
+            f.write(f"最佳RA-mAP值: {best_ra_map:.4f}\n")
+            f.write(f"RA-mAP计算公式: 0.4 × mAP@0.5:0.95 + 0.6 × NO-Safety Vest Recall\n\n")
+
         f.write("详细结果文件位置:\n")
         for model_name in models_results.keys():
             f.write(f"- {model_name}: {output_dir}/{model_name}/\n")
@@ -440,6 +531,150 @@ def create_summary_report(models_results, output_dir, model_type='best', train_f
         f.write(f"\n错误图片位置: {output_dir}/error_images/\n")
 
     print(f"汇总报告已保存到: {summary_file}")
+
+def create_performance_table(models_results, output_dir, model_type='best', train_folder='train200epoch', eval_split='test'):
+    """
+    创建性能对比表格 (CSV和Excel格式)
+
+    Args:
+        models_results (dict): 模型结果字典
+        output_dir (Path): 输出目录
+        model_type (str): 模型类型
+        train_folder (str): 训练文件夹名称
+        eval_split (str): 评估数据集类型
+    """
+    # 准备数据
+    table_data = []
+
+    for model_name, results in models_results.items():
+        if results:
+            # 获取基础指标
+            map50 = results.get('map50', None)
+            map50_95 = results.get('map50_95', None)
+            no_vest_recall = results.get('no_safety_vest_recall', None)
+
+            # 计算RA-mAP
+            ra_map = calculate_ra_map(map50_95, no_vest_recall)
+
+            # 格式化数据
+            row = {
+                '模型名称': model_name,
+                'mAP@0.5': f"{map50:.4f}" if isinstance(map50, (int, float)) else 'N/A',
+                'mAP@0.5:0.95': f"{map50_95:.4f}" if isinstance(map50_95, (int, float)) else 'N/A',
+                'NO-Safety Vest Recall': f"{no_vest_recall:.4f}" if isinstance(no_vest_recall, (int, float)) else 'N/A',
+                'RA-mAP': f"{ra_map:.4f}" if ra_map is not None else 'N/A',
+                # 添加原始数值用于排序
+                '_map50_raw': map50 if isinstance(map50, (int, float)) else 0,
+                '_map50_95_raw': map50_95 if isinstance(map50_95, (int, float)) else 0,
+                '_no_vest_recall_raw': no_vest_recall if isinstance(no_vest_recall, (int, float)) else 0,
+                '_ra_map_raw': ra_map if ra_map is not None else 0
+            }
+        else:
+            row = {
+                '模型名称': model_name,
+                'mAP@0.5': 'N/A',
+                'mAP@0.5:0.95': 'N/A',
+                'NO-Safety Vest Recall': 'N/A',
+                'RA-mAP': 'N/A',
+                '_map50_raw': 0,
+                '_map50_95_raw': 0,
+                '_no_vest_recall_raw': 0,
+                '_ra_map_raw': 0
+            }
+
+        table_data.append(row)
+
+    # 按RA-mAP降序排序
+    table_data.sort(key=lambda x: x['_ra_map_raw'], reverse=True)
+
+    # 创建DataFrame
+    df = pd.DataFrame(table_data)
+
+    # 移除用于排序的原始数值列
+    display_columns = ['模型名称', 'mAP@0.5', 'mAP@0.5:0.95', 'NO-Safety Vest Recall', 'RA-mAP']
+    df_display = df[display_columns].copy()
+
+    # 保存CSV文件
+    csv_file = output_dir / f"performance_comparison_{model_type}_{train_folder}_{eval_split}.csv"
+    df_display.to_csv(csv_file, index=False, encoding='utf-8-sig')
+    print(f"性能对比CSV表格已保存到: {csv_file}")
+
+    # 保存Excel文件
+    excel_file = output_dir / f"performance_comparison_{model_type}_{train_folder}_{eval_split}.xlsx"
+
+    try:
+        with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
+            # 写入主表
+            df_display.to_excel(writer, sheet_name='性能对比', index=False)
+
+            # 获取工作表
+            worksheet = writer.sheets['性能对比']
+
+            # 设置列宽
+            column_widths = {
+                'A': 25,  # 模型名称
+                'B': 15,  # mAP@0.5
+                'C': 18,  # mAP@0.5:0.95
+                'D': 22,  # NO-Safety Vest Recall
+                'E': 15   # RA-mAP
+            }
+
+            for col, width in column_widths.items():
+                worksheet.column_dimensions[col].width = width
+
+            # 设置标题行样式
+            header_font = Font(bold=True, color="FFFFFF")
+            header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            header_alignment = Alignment(horizontal="center", vertical="center")
+
+            for col in range(1, len(display_columns) + 1):
+                cell = worksheet.cell(row=1, column=col)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = header_alignment
+
+            # 设置数据行样式
+            data_alignment = Alignment(horizontal="center", vertical="center")
+            for row in range(2, len(df_display) + 2):
+                for col in range(1, len(display_columns) + 1):
+                    cell = worksheet.cell(row=row, column=col)
+                    cell.alignment = data_alignment
+
+                    # 为最佳RA-mAP值添加高亮
+                    if col == 5 and row == 2:  # RA-mAP列的第一行（最高值）
+                        cell.fill = PatternFill(start_color="90EE90", end_color="90EE90", fill_type="solid")
+
+            # 添加说明工作表
+            info_data = [
+                ['指标说明', ''],
+                ['mAP@0.5', '在IoU阈值0.5下的平均精度'],
+                ['mAP@0.5:0.95', '在IoU阈值0.5到0.95下的平均精度'],
+                ['NO-Safety Vest Recall', 'NO-Safety Vest类别的召回率'],
+                ['RA-mAP', '新提出的综合指标'],
+                ['', ''],
+                ['RA-mAP计算公式', ''],
+                ['RA-mAP = 0.4 × mAP@0.5:0.95 + 0.6 × NO-Safety Vest Recall', ''],
+                ['', ''],
+                ['说明', ''],
+                ['- RA-mAP综合考虑了整体检测精度和NO-Safety Vest类别的召回率', ''],
+                ['- mAP@0.5:0.95权重为0.4，体现整体检测能力', ''],
+                ['- NO-Safety Vest Recall权重为0.6，突出安全背心检测的重要性', ''],
+                ['- 表格按RA-mAP降序排列，值越高表示性能越好', '']
+            ]
+
+            info_df = pd.DataFrame(info_data, columns=['项目', '说明'])
+            info_df.to_excel(writer, sheet_name='指标说明', index=False)
+
+            # 设置说明工作表样式
+            info_worksheet = writer.sheets['指标说明']
+            info_worksheet.column_dimensions['A'].width = 50
+            info_worksheet.column_dimensions['B'].width = 60
+
+        print(f"性能对比Excel表格已保存到: {excel_file}")
+
+    except Exception as e:
+        print(f"保存Excel文件时出错: {e}")
+        print("CSV文件已成功保存")
 
 def parse_args():
     """解析命令行参数"""
@@ -454,8 +689,10 @@ def parse_args():
 {chr(10).join(f'  - {folder}' for folder in available_folders) if available_folders else '  未找到训练文件夹'}
 
 使用示例:
-  python test_all_models.py --model-type best --train-folder train200epoch
+  python test_all_models.py --model-type best --train-folder train200epoch  # 默认使用测试集(论文指标)
   python test_all_models.py --model-type last --train-folder train300epoch --conf-thres 0.25
+  python test_all_models.py --train-folder rail_train300epoch --data data/railroad-worker-detection/data.yaml
+  python test_all_models.py --eval-split val --model-type best --train-folder train200epoch  # 开发阶段使用验证集
         """
     )
 
@@ -471,6 +708,12 @@ def parse_args():
         type=str,
         default='train200epoch',
         help=f'训练文件夹名称 (默认: train200epoch)\n可用选项: {", ".join(available_folders) if available_folders else "无"}'
+    )
+    parser.add_argument(
+        '--data',
+        type=str,
+        default='data/SafetyVests.v6/data.yaml',
+        help='数据集配置文件路径 (默认: data/SafetyVests.v6/data.yaml)'
     )
     parser.add_argument(
         '--conf-thres',
@@ -489,6 +732,13 @@ def parse_args():
         action='store_true',
         help='列出所有可用的训练文件夹并退出'
     )
+    parser.add_argument(
+        '--eval-split',
+        type=str,
+        choices=['val', 'test'],
+        default='test',
+        help='选择评估数据集: val (验证集) 或 test (测试集)。论文指标使用test (默认: test)'
+    )
 
     args = parser.parse_args()
 
@@ -506,6 +756,11 @@ def parse_args():
     if args.train_folder not in available_folders:
         print(f"错误: 训练文件夹 '{args.train_folder}' 不存在")
         print(f"可用的训练文件夹: {', '.join(available_folders) if available_folders else '无'}")
+        sys.exit(1)
+
+    # 验证数据集配置文件是否存在
+    if not Path(args.data).exists():
+        print(f"错误: 数据集配置文件 '{args.data}' 不存在")
         sys.exit(1)
 
     return args
@@ -529,13 +784,15 @@ def main():
     for model in models:
         print(f"  - {model['name']}: {model['path']}")
 
-    # 创建输出目录 - 包含训练文件夹名称
+    # 创建输出目录 - 包含训练文件夹名称和评估数据集类型
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = Path(f"runs/{train_folder}_test_{model_type}_{timestamp}")
+    eval_suffix = "test" if args.eval_split == "test" else "val"
+    output_dir = Path(f"runs/{train_folder}_{eval_suffix}_{model_type}_{timestamp}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"\n训练文件夹: runs/{train_folder}")
     print(f"输出目录: {output_dir}")
+    print(f"评估数据集: {args.eval_split.upper()} ({'验证集' if args.eval_split == 'val' else '测试集'})")
     print(f"置信度阈值: {args.conf_thres}")
     print(f"IoU阈值: {args.iou_thres}")
 
@@ -545,14 +802,14 @@ def main():
     # 测试每个模型
     for i, model in enumerate(models, 1):
         print(f"\n[{i}/{len(models)}] 测试模型: {model['name']}")
-        success, output, metrics = run_validation(model, output_dir, args.conf_thres, args.iou_thres)
+        success, _, metrics = run_validation(model, output_dir, args.data, args.conf_thres, args.iou_thres, args.eval_split)
 
         if success:
             # 保存解析的指标
             models_results[model['name']] = metrics
 
             # 保存错误图片
-            save_error_images(model['name'], output_dir, output_dir)
+            save_error_images(model['name'], output_dir, output_dir, args.data, args.eval_split)
 
             print(f"模型 {model['name']} 测试完成")
             if metrics:
@@ -568,8 +825,21 @@ def main():
                     print(f"  NO-Safety Vest其他指标: Precision={metrics.get('no_safety_vest_precision', 'N/A'):.4f}, "
                           f"mAP@0.5={metrics.get('no_safety_vest_map50', 'N/A'):.4f}, "
                           f"mAP@0.5:0.95={metrics.get('no_safety_vest_map50_95', 'N/A'):.4f}")
+
+                    # 计算并显示RA-mAP
+                    map50_95 = metrics.get('map50_95', 'N/A')
+                    if map50_95 != 'N/A':
+                        ra_map = calculate_ra_map(map50_95, no_vest_recall)
+                        if ra_map is not None:
+                            print(f"  RA-mAP (新指标): {ra_map:.4f}")
+                            print(f"    计算公式: 0.4 × {map50_95:.4f} + 0.6 × {no_vest_recall:.4f} = {ra_map:.4f}")
+                        else:
+                            print(f"  RA-mAP: 无法计算")
+                    else:
+                        print(f"  RA-mAP: 无法计算 (缺少mAP@0.5:0.95)")
                 else:
                     print(f"  NO-Safety Vest召回率: 未能解析")
+                    print(f"  RA-mAP: 无法计算 (缺少NO-Safety Vest召回率)")
                     # 调试信息
                     if '_debug_no_vest_line' in metrics:
                         print(f"  调试: 找到NO-Safety Vest行: {metrics['_debug_no_vest_line']}")
@@ -582,7 +852,10 @@ def main():
             models_results[model['name']] = {}
 
     # 创建汇总报告
-    create_summary_report(models_results, output_dir, model_type, train_folder)
+    create_summary_report(models_results, output_dir, model_type, train_folder, args.data, args.eval_split)
+
+    # 创建性能对比表格
+    create_performance_table(models_results, output_dir, model_type, train_folder, args.eval_split)
 
     # 保存详细结果到JSON
     json_file = output_dir / "detailed_results.json"
@@ -593,6 +866,8 @@ def main():
     print(f"所有结果已保存到: {output_dir}")
     print(f"汇总报告: {output_dir}/summary_report.txt")
     print(f"详细JSON结果: {json_file}")
+    print(f"性能对比表格: {output_dir}/performance_comparison_{model_type}_{train_folder}_{args.eval_split}.csv")
+    print(f"性能对比表格: {output_dir}/performance_comparison_{model_type}_{train_folder}_{args.eval_split}.xlsx")
 
 if __name__ == "__main__":
     main()

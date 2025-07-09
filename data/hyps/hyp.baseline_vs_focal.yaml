@@ -1,0 +1,82 @@
+# YOLOv5 Baseline vs Focal Loss 对比实验配置
+# 用于验证"面向难例的分类损失函数"效果
+#
+# 使用方法：
+# 1. 基线实验：修改 fl_gamma: 0.0
+# 2. Focal Loss实验：修改 fl_gamma: 2.0
+# 3. 其他参数保持完全一致，确保对比的公平性
+
+# === 基础学习率参数（两个实验完全相同）===
+lr0: 0.01  # initial learning rate (SGD=1E-2, Adam=1E-3)
+lrf: 0.1  # final OneCycleLR learning rate (lr0 * lrf)
+momentum: 0.937  # SGD momentum/Adam beta1
+weight_decay: 0.0005  # optimizer weight decay 5e-4
+warmup_epochs: 3.0  # warmup epochs (fractions ok)
+warmup_momentum: 0.8  # warmup initial momentum
+warmup_bias_lr: 0.1  # warmup initial bias lr
+
+# === 损失函数权重配置（两个实验完全相同）===
+box: 0.05  # box loss gain
+cls: 0.5   # cls loss gain
+cls_pw: 1.0  # cls BCELoss positive_weight
+obj: 1.0  # obj loss gain (scale with pixels)
+obj_pw: 1.0  # obj BCELoss positive_weight
+iou_t: 0.20  # IoU training threshold
+anchor_t: 4.0  # anchor-multiple threshold
+
+# === 🔬 实验变量：Focal Loss 参数 ===
+fl_gamma: 2.0  # 🎯 修改这个值进行对比实验
+# 基线实验：fl_gamma: 0.0  (标准BCE损失)
+# Focal实验：fl_gamma: 2.0  (面向难例的Focal Loss)
+
+# === 数据增强配置（两个实验完全相同）===
+hsv_h: 0.015  # image HSV-Hue augmentation (fraction)
+hsv_s: 0.7  # image HSV-Saturation augmentation (fraction)
+hsv_v: 0.4  # image HSV-Value augmentation (fraction)
+degrees: 10.0  # image rotation (+/- deg)
+translate: 0.1  # image translation (+/- fraction)
+scale: 0.5  # image scale (+/- gain)
+shear: 2.0  # image shear (+/- deg)
+perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
+flipud: 0.0  # image flip up-down (probability)
+fliplr: 0.5  # image flip left-right (probability)
+mosaic: 1.0  # image mosaic (probability)
+mixup: 0.1   # image mixup (probability)
+copy_paste: 0.0 # image copy-paste (probability)
+
+# === 实验脚本示例 ===
+# 
+# # 1. 基线实验（标准BCE损失）
+# cp data/hyps/hyp.baseline_vs_focal.yaml data/hyps/hyp.baseline_temp.yaml
+# sed -i 's/fl_gamma: 2.0/fl_gamma: 0.0/' data/hyps/hyp.baseline_temp.yaml
+# python train.py --data data/SafetyVests.v6/data.yaml \
+#                 --cfg models/yolov5s-ghost.yaml \
+#                 --weights yolov5s.pt \
+#                 --hyp data/hyps/hyp.baseline_temp.yaml \
+#                 --name baseline_bce \
+#                 --epochs 100
+#
+# # 2. Focal Loss实验
+# python train.py --data data/SafetyVests.v6/data.yaml \
+#                 --cfg models/yolov5s-ghost.yaml \
+#                 --weights yolov5s.pt \
+#                 --hyp data/hyps/hyp.baseline_vs_focal.yaml \
+#                 --name focal_loss_gamma2 \
+#                 --epochs 100
+#
+# # 3. 结果对比
+# python val.py --data data/SafetyVests.v6/data.yaml \
+#               --weights runs/train/baseline_bce/weights/best.pt \
+#               --name baseline_bce_val
+# python val.py --data data/SafetyVests.v6/data.yaml \
+#               --weights runs/train/focal_loss_gamma2/weights/best.pt \
+#               --name focal_loss_gamma2_val
+
+# === 预期对比结果 ===
+# 指标                    基线(fl_gamma=0.0)    Focal Loss(fl_gamma=2.0)
+# mAP@0.5                      XX.X%                  XX.X% (+2-3%)
+# mAP@0.5:0.95                 XX.X%                  XX.X% (+1-2%)
+# No-Safety Vest Recall        XX.X%                  XX.X% (+3-5%)
+# Safety Vest Recall           XX.X%                  XX.X% (+1-2%)
+# 复杂背景误检率                XX.X%                  XX.X% (-20-30%)
+# 部分遮挡漏检率                XX.X%                  XX.X% (-15-25%)

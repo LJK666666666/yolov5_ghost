@@ -1,0 +1,65 @@
+# YOLOv5 Hyperparameters with Focal Loss for Hard Example Mining
+# 基于 hyp.recommand.yaml，仅修改 Focal Loss 参数
+# 创新亮点二：引入面向"难例"的分类损失函数
+#
+# 核心思想：标准的损失函数对所有样本一视同仁。但在安全背心检测任务中，
+# 那些背景极其相似的No-Safety Vest样本、或者被部分遮挡的Safety Vest样本，
+# 显然是更难学习的"硬骨头"。我们应该让模型在训练时，更专注于这些难啃的硬骨头。
+#
+# 项目故事："在错误分析中，我们发现模型的大部分错误都集中在少数困难样本上
+# （如背景混淆、轻微遮挡）。为了解决这个问题，我们引入了经典的Focal Loss来
+# 优化YOLOv5的分类损失部分。Focal Loss通过一个动态的调制因子，降低了大量
+# 易分类样本（如蓝天背景下的反光衣）的损失权重，从而迫使模型将更多的学习
+# 资源集中在那些难以区分的'硬反例'上，提升了模型在复杂场景下的鲁棒性。"
+
+# === 基础学习率参数（与hyp.recommand.yaml完全相同）===
+lr0: 0.01  # initial learning rate (SGD=1E-2, Adam=1E-3)
+lrf: 0.1  # final OneCycleLR learning rate (lr0 * lrf)
+momentum: 0.937  # SGD momentum/Adam beta1
+weight_decay: 0.0005  # optimizer weight decay 5e-4
+warmup_epochs: 3.0  # warmup epochs (fractions ok)
+warmup_momentum: 0.8  # warmup initial momentum
+warmup_bias_lr: 0.1  # warmup initial bias lr
+
+# === 损失函数权重配置（与hyp.recommand.yaml完全相同）===
+box: 0.05  # box loss gain
+cls: 0.5   # cls loss gain
+cls_pw: 1.0  # cls BCELoss positive_weight
+obj: 1.0  # obj loss gain (scale with pixels)
+obj_pw: 1.0  # obj BCELoss positive_weight
+iou_t: 0.20  # IoU training threshold
+anchor_t: 4.0  # anchor-multiple threshold
+
+# === 🎯 唯一修改：Focal Loss 难例挖掘配置 ===
+fl_gamma: 2.0  # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
+# 这是相对于 hyp.recommand.yaml 的唯一改动！
+# fl_gamma = 0: 等同于标准BCE损失（hyp.recommand.yaml的设置）
+# fl_gamma = 2.0: 强力难例关注，适合复杂背景的安全背心检测
+#
+# Focal Loss公式: FL(p_t) = -α(1-p_t)^γ * log(p_t)
+# 其中 p_t 是模型对真实类别的预测概率
+# γ 越大，对难例（低概率样本）的关注越强
+
+# === 数据增强配置（与hyp.recommand.yaml完全相同）===
+hsv_h: 0.015  # image HSV-Hue augmentation (fraction)
+hsv_s: 0.7  # image HSV-Saturation augmentation (fraction)
+hsv_v: 0.4  # image HSV-Value augmentation (fraction)
+degrees: 10.0  # image rotation (+/- deg)
+translate: 0.1  # image translation (+/- fraction)
+scale: 0.5  # image scale (+/- gain)
+shear: 2.0  # image shear (+/- deg)
+perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
+flipud: 0.0  # image flip up-down (probability)
+fliplr: 0.5  # image flip left-right (probability)
+mosaic: 1.0  # image mosaic (probability)
+mixup: 0.1   # image mixup (probability)
+copy_paste: 0.0 # image copy-paste (probability)
+
+# === 使用说明 ===
+# 与 hyp.recommand.yaml 的唯一区别：fl_gamma: 0.0 -> 2.0
+# 训练命令：
+# python train.py --data data/SafetyVests.v6/data.yaml \
+#                 --cfg models/yolov5s-ghost.yaml \
+#                 --weights yolov5s.pt \
+#                 --hyp data/hyps/hyp.focal_loss.yaml \
+#                 --epochs 100

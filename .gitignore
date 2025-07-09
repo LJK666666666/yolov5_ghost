@@ -56,7 +56,7 @@ VOC/
 
 # Neural Network weights -----------------------------------------------------------------------------------------------
 *.weights
-# *.pt  # 注释掉，允许上传预训练权重
+*.pt  # 重新启用，排除大的训练权重文件
 !yolov5s.pt  # 明确允许 yolov5s.pt
 *.pb
 *.onnx
@@ -72,6 +72,29 @@ VOC/
 *_paddle_model/
 darknet53.conv.74
 yolov3-tiny.conv.15
+
+# Large training files to reduce repository size
+runs/*/weights/
+runs/*/results/
+runs/*/train_batch*.jpg
+runs/*/val_batch*.jpg
+runs/*/labels/
+runs/*/images/
+runs/examination/
+runs/sv6_train1000epoch_/
+runs/comprehensive_test_*/
+runs/train300epoch_test_*/
+
+# Large dataset files
+*.zip
+data/*.zip
+data/Safety*
+
+# Large notebook files
+*.ipynb
+
+# Large PDF files
+*.pdf
 
 # GitHub Python GitIgnore ----------------------------------------------------------------------------------------------
 # Byte-compiled / optimized / DLL files

@@ -85,6 +85,7 @@ from utils.metrics import fitness
 from utils.plots import plot_evolve
 from utils.torch_utils import (
     EarlyStopping,
+    SmoothEarlyStopping,
     ModelEMA,
     de_parallel,
     select_device,
@@ -408,8 +409,60 @@ def train(hyp, opt, device, callbacks):
     results = (0, 0, 0, 0, 0, 0, 0)  # P, R, mAP@.5, mAP@.5-.95, val_loss(box, obj, cls)
     scheduler.last_epoch = start_epoch - 1  # do not move
     scaler = torch.amp.GradScaler('cuda', enabled=amp)
-    stopper, stop = EarlyStopping(patience=opt.patience), False
+
+    # Initialize early stopping mechanism
+    if opt.smooth_early_stop:
+        stopper = SmoothEarlyStopping(
+            patience=opt.smooth_patience,
+            window_size=opt.smooth_window,
+            min_delta=opt.smooth_delta
+        )
+        LOGGER.info(f"Using Smooth Early Stopping: patience={opt.smooth_patience}, window={opt.smooth_window}, delta={opt.smooth_delta}")
+    else:
+        stopper = EarlyStopping(patience=opt.patience)
+        LOGGER.info(f"Using Standard Early Stopping: patience={opt.patience}")
+
+    stop = False
     compute_loss = ComputeLoss(model, opt)  # init loss class
+
+    # 🎯 创新亮点四：知识蒸馏 - 加载教师模型
+    teacher_model = None
+    if opt.distillation and opt.teacher_weights:
+        LOGGER.info(f"🎓 Loading teacher model from {opt.teacher_weights}")
+        try:
+            # 加载教师模型
+            teacher_ckpt = torch.load(opt.teacher_weights, map_location="cpu")
+
+            # 获取教师模型的原始类别数
+            teacher_nc = teacher_ckpt["model"].yaml.get('nc', nc)
+            LOGGER.info(f"📚 Teacher model classes: {teacher_nc}, Student model classes: {nc}")
+
+            # 使用教师模型的原始配置创建模型
+            teacher_model = Model(
+                teacher_ckpt["model"].yaml, ch=3, nc=teacher_nc, anchors=hyp.get("anchors")
+            ).to(device)
+            teacher_csd = teacher_ckpt["model"].float().state_dict()
+            teacher_model.load_state_dict(teacher_csd, strict=False)
+            teacher_model.train()  # 设置为训练模式，确保输出格式与学生模型一致
+
+            # 冻结教师模型参数
+            for param in teacher_model.parameters():
+                param.requires_grad = False
+
+            # 检查类别数兼容性
+            if teacher_nc != nc:
+                LOGGER.warning(f"⚠️  Teacher model ({teacher_nc} classes) and student model ({nc} classes) have different number of classes")
+                LOGGER.warning("   Knowledge distillation will focus on feature-level knowledge transfer")
+
+            LOGGER.info(f"✅ Teacher model loaded successfully")
+            LOGGER.info(f"📚 Knowledge distillation enabled: alpha={opt.distill_alpha}, temp={opt.distill_temp}")
+
+        except Exception as e:
+            LOGGER.error(f"❌ Failed to load teacher model: {e}")
+            LOGGER.info("🔄 Continuing without knowledge distillation")
+            opt.distillation = False
+            teacher_model = None
+
     callbacks.run("on_train_start")
     LOGGER.info(
         f"Image sizes {imgsz} train, {imgsz} val\n"
@@ -509,9 +562,23 @@ def train(hyp, opt, device, callbacks):
             # Forward
             with torch.amp.autocast('cuda', enabled=amp):
                 pred = model(imgs)  # forward
-                loss, loss_items = compute_loss(
-                    pred, targets.to(device)
-                )  # loss scaled by batch_size
+
+                # 🎯 知识蒸馏：获取教师模型预测
+                teacher_pred = None
+                if opt.distillation and teacher_model is not None:
+                    with torch.no_grad():
+                        teacher_pred = teacher_model(imgs)
+
+                # 计算损失（包含知识蒸馏）
+                if opt.distillation and teacher_pred is not None:
+                    loss, loss_items = compute_loss.__call_with_distillation__(
+                        pred, teacher_pred, targets.to(device)
+                    )
+                else:
+                    loss, loss_items = compute_loss(
+                        pred, targets.to(device)
+                    )  # loss scaled by batch_size
+
                 if RANK != -1:
                     loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
                 if opt.quad:
@@ -535,18 +602,43 @@ def train(hyp, opt, device, callbacks):
 
             # Log
             if RANK in {-1, 0}:
-                mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
-                mem = f"{torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0:.3g}G"  # (GB)
-                pbar.set_description(
-                    ("%11s" * 2 + "%11.4g" * 5)
-                    % (
-                        f"{epoch}/{epochs - 1}",
-                        mem,
-                        *mloss,
-                        targets.shape[0],
-                        imgs.shape[-1],
+                # 🎯 知识蒸馏：处理不同长度的损失项
+                if opt.distillation and len(loss_items) > 3:
+                    # 知识蒸馏模式：loss_items = [box, obj, cls, soft, total]
+                    if len(mloss) == 3:  # 第一次迭代，初始化为5项
+                        mloss = torch.zeros(5, device=device)
+                    mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
+
+                    mem = f"{torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0:.3g}G"  # (GB)
+                    # 显示格式：epoch/epochs mem box obj cls soft total targets img_size
+                    pbar.set_description(
+                        ("%11s" * 2 + "%11.4g" * 7)
+                        % (
+                            f"{epoch}/{epochs - 1}",
+                            mem,
+                            *mloss,
+                            targets.shape[0],
+                            imgs.shape[-1],
+                        )
                     )
-                )
+                else:
+                    # 普通模式：loss_items = [box, obj, cls]
+                    if len(mloss) == 5:  # 如果之前是蒸馏模式，重新初始化为3项
+                        mloss = torch.zeros(3, device=device)
+                    mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
+
+                    mem = f"{torch.cuda.memory_reserved() / 1e9 if torch.cuda.is_available() else 0:.3g}G"  # (GB)
+                    # 原始显示格式：epoch/epochs mem box obj cls targets img_size
+                    pbar.set_description(
+                        ("%11s" * 2 + "%11.4g" * 5)
+                        % (
+                            f"{epoch}/{epochs - 1}",
+                            mem,
+                            *mloss,
+                            targets.shape[0],
+                            imgs.shape[-1],
+                        )
+                    )
                 callbacks.run(
                     "on_train_batch_end", model, ni, imgs, targets, paths, list(mloss)
                 )
@@ -585,6 +677,27 @@ def train(hyp, opt, device, callbacks):
                 np.array(results).reshape(1, -1)
             )  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
             stop = stopper(epoch=epoch, fitness=fi)  # early stop check
+
+            # Log smooth early stopping status if enabled
+            if opt.smooth_early_stop and hasattr(stopper, 'get_status_info'):
+                status_info = stopper.get_status_info()
+                # Safely convert epoch to integer (handle numpy arrays, tensors, etc.)
+                try:
+                    epoch_num = int(epoch.item()) if hasattr(epoch, 'item') else int(epoch)
+                except (AttributeError, TypeError):
+                    epoch_num = 0  # Fallback value
+
+                if epoch_num % 10 == 0 or stop:  # Log every 10 epochs or when stopping
+                    LOGGER.info(
+                        f"Smooth Early Stopping Status (Epoch {epoch_num}):\n"
+                        f"  Current avg fitness: {status_info['current_avg_fitness']:.6f} "
+                        f"(window: {status_info['window_size']} epochs)\n"
+                        f"  Best avg fitness: {status_info['best_avg_fitness']:.6f} "
+                        f"(epoch {status_info['best_avg_epoch']})\n"
+                        f"  Epochs since improvement: {status_info['epochs_since_improvement']}\n"
+                        f"  Total improvements: {status_info['improvement_count']}"
+                    )
+
             if fi > best_fitness:
                 best_fitness = fi
             log_vals = list(mloss) + list(results) + lr
@@ -809,6 +922,16 @@ def parse_opt(known=False):
     parser.add_argument("--label-smoothing", type=float, default=0.0, help="Label smoothing epsilon")
     parser.add_argument("--box-loss", type=str, default="ciou", choices=["ciou", "wiou"], help="bounding box loss type: ciou or wiou")
     parser.add_argument("--patience", type=int, default=100, help="EarlyStopping patience (epochs without improvement)")
+    parser.add_argument("--smooth-early-stop", action="store_true", help="Enable smooth early stopping based on moving average")
+
+    # 🎯 创新亮点四：知识蒸馏相关参数
+    parser.add_argument("--distillation", action="store_true", help="Enable knowledge distillation training")
+    parser.add_argument("--teacher-weights", type=str, default="", help="Teacher model weights path for knowledge distillation")
+    parser.add_argument("--distill-alpha", type=float, default=0.7, help="Distillation loss weight (0.0-1.0)")
+    parser.add_argument("--distill-temp", type=float, default=4.0, help="Temperature for knowledge distillation")
+    parser.add_argument("--smooth-patience", type=int, default=100, help="Smooth early stopping patience (epochs without improvement in average)")
+    parser.add_argument("--smooth-window", type=int, default=10, help="Window size for fitness averaging in smooth early stopping")
+    parser.add_argument("--smooth-delta", type=float, default=0.0001, help="Minimum delta for improvement in smooth early stopping")
     parser.add_argument("--freeze", nargs="+", type=int, default=[0], help="Freeze layers: backbone=10, first3=0 1 2")
     parser.add_argument("--save-period", type=int, default=-1, help="Save checkpoint every x epochs (disabled if < 1)")
     parser.add_argument("--seed", type=int, default=0, help="Global training seed")
@@ -1256,6 +1379,10 @@ def run(**kwargs):
         cos_lr (bool, optional): Use cosine learning rate scheduler. Defaults to False.
         label_smoothing (float, optional): Label smoothing epsilon value. Defaults to 0.0.
         patience (int, optional): Patience for early stopping, measured in epochs without improvement. Defaults to 100.
+        smooth_early_stop (bool, optional): Enable smooth early stopping based on moving average. Defaults to False.
+        smooth_patience (int, optional): Patience for smooth early stopping, measured in epochs without improvement in average. Defaults to 100.
+        smooth_window (int, optional): Window size for fitness averaging in smooth early stopping. Defaults to 10.
+        smooth_delta (float, optional): Minimum delta for improvement in smooth early stopping. Defaults to 0.0001.
         freeze (list, optional): Layers to freeze, e.g., backbone=10, first 3 layers = [0, 1, 2]. Defaults to [0].
         save_period (int, optional): Frequency in epochs to save checkpoints. Disabled if < 1. Defaults to -1.
         seed (int, optional): Global training random seed. Defaults to 0.

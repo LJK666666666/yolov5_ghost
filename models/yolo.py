@@ -34,6 +34,9 @@ from models.common import (
     Bottleneck,
     BottleneckCSP,
     C3Ghost,
+    C3SE,
+    C3MoE,
+    C3HybridMoE,
     C3x,
     Classify,
     Concat,
@@ -45,10 +48,21 @@ from models.common import (
     DWConv,
     DWConvTranspose2d,
     Expand,
+    WeightedFeatureFusion,
+    WeightedFeatureFusionConcat,
     Focus,
     GhostBottleneck,
     GhostConv,
+    HybridMoELayer,
+    HybridMoEBottleneck,
+    MoEBottleneck,
+    MoEConv,
+    MoELayer,
+    AdaptiveMoE,
     Proto,
+    SEBlock,
+    SEBottleneck,
+    SEConv,
 )
 from models.experimental import MixConv2d
 from utils.autoanchor import check_anchor_order
@@ -418,6 +432,14 @@ def parse_model(d, ch):
             C3TR,
             C3SPP,
             C3Ghost,
+            C3SE,
+            C3MoE,
+            SEConv,
+            SEBottleneck,
+            MoEConv,
+            MoELayer,
+            MoEBottleneck,
+            AdaptiveMoE,
             nn.ConvTranspose2d,
             DWConvTranspose2d,
             C3x,
@@ -427,7 +449,7 @@ def parse_model(d, ch):
                 c2 = make_divisible(c2 * gw, ch_mul)
 
             args = [c1, c2, *args[1:]]
-            if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3x}:
+            if m in {BottleneckCSP, C3, C3TR, C3Ghost, C3SE, C3MoE, C3x}:
                 args.insert(2, n)  # number of repeats
                 n = 1
         elif m is CoordAtt:
@@ -438,6 +460,12 @@ def parse_model(d, ch):
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
+            c2 = sum(ch[x] for x in f)
+        elif m is WeightedFeatureFusion:
+            # 加权特征融合：输出通道数等于输入特征图的通道数（要求所有输入通道数相同）
+            c2 = ch[f[0]]  # 假设所有输入特征图通道数相同
+        elif m is WeightedFeatureFusionConcat:
+            # 加权特征融合拼接：输出通道数等于所有输入通道数之和
             c2 = sum(ch[x] for x in f)
         # TODO: channel, gw, gd
         elif m in {Detect, Segment}:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-分析runs/train200epoch下所有best.pt模型的参数量、计算速度和模型大小
+分析指定文件夹下所有best.pt模型的参数量、计算速度和模型大小
 """
 
 import os
@@ -10,6 +10,7 @@ import json
 import time
 import torch
 import torch.nn as nn
+import argparse
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -119,7 +120,7 @@ def measure_inference_speed(model, device, input_size=(640, 640), num_runs=100):
         print(f"测量推理速度失败: {e}")
         return 0, 0
 
-def analyze_model(model_path, device):
+def analyze_model(model_path, device, input_size=(640, 640), num_runs=100):
     """分析单个模型"""
     model_info = {
         'model_path': str(model_path),
@@ -132,53 +133,53 @@ def analyze_model(model_path, device):
         'fps': 0,
         'error': None
     }
-    
+
     try:
         # 获取文件大小
         model_info['file_size_mb'] = get_model_size_mb(model_path)
-        
+
         # 加载模型
         model = DetectMultiBackend(model_path, device=device)
-        
+
         # 计算参数量
         total_params, trainable_params = count_parameters(model.model)
         model_info['total_params'] = total_params
         model_info['trainable_params'] = trainable_params
-        
+
         # 计算GFLOPs
-        gflops = calculate_gflops(model.model, device)
+        gflops = calculate_gflops(model.model, device, input_size)
         model_info['gflops'] = gflops
-        
+
         # 测量推理速度
-        inference_time, fps = measure_inference_speed(model.model, device)
+        inference_time, fps = measure_inference_speed(model.model, device, input_size, num_runs)
         model_info['inference_time_ms'] = inference_time
         model_info['fps'] = fps
-        
+
         print(f"✓ {model_info['model_name']}: {total_params:,} 参数, {gflops:.1f} GFLOPs, {inference_time:.2f}ms, {fps:.1f} FPS")
-        
+
     except Exception as e:
         error_msg = str(e)
         model_info['error'] = error_msg
         print(f"✗ {model_info['model_name']}: 分析失败 - {error_msg}")
-    
+
     return model_info
 
-def get_all_best_models():
+def get_all_best_models(train_dir_path):
     """获取所有best.pt模型路径"""
-    train_dir = Path("runs/train200epoch")
+    train_dir = Path(train_dir_path)
     models = []
-    
+
     if not train_dir.exists():
         print(f"训练目录不存在: {train_dir}")
         return models
-    
+
     for exp_dir in train_dir.iterdir():
         if exp_dir.is_dir():
             weights_dir = exp_dir / "weights"
             best_pt = weights_dir / "best.pt"
             if best_pt.exists():
                 models.append(best_pt)
-    
+
     return models
 
 def create_summary_report(models_info, output_path):
@@ -303,50 +304,115 @@ def create_summary_report(models_info, output_path):
     print(f"CSV文件: {csv_path}")
     print(f"详细报告: {report_path}")
 
+def parse_arguments():
+    """解析命令行参数"""
+    parser = argparse.ArgumentParser(
+        description='分析指定文件夹下所有best.pt模型的参数量、计算速度和模型大小',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用示例:
+  python analyze_models.py --folder runs/train200epoch
+  python analyze_models.py --folder runs/sv6_train1000epoch_ --output results/analysis
+  python analyze_models.py -f runs/train200epoch -o analysis_output --device cpu
+        """
+    )
+
+    parser.add_argument(
+        '--folder', '-f',
+        type=str,
+        default='runs/train200epoch',
+        help='要分析的训练文件夹路径 (默认: runs/train200epoch)'
+    )
+
+    parser.add_argument(
+        '--output', '-o',
+        type=str,
+        default=None,
+        help='输出结果的文件夹路径 (默认: 与输入文件夹相同)'
+    )
+
+    parser.add_argument(
+        '--device',
+        type=str,
+        default='',
+        help='使用的设备 (默认: 自动选择)'
+    )
+
+    parser.add_argument(
+        '--num-runs',
+        type=int,
+        default=100,
+        help='推理速度测试的运行次数 (默认: 100)'
+    )
+
+    parser.add_argument(
+        '--input-size',
+        type=int,
+        nargs=2,
+        default=[640, 640],
+        metavar=('HEIGHT', 'WIDTH'),
+        help='输入图像尺寸 (默认: 640 640)'
+    )
+
+    return parser.parse_args()
+
 def main():
     """主函数"""
-    print("开始分析所有best.pt模型...")
-    
+    # 解析命令行参数
+    args = parse_arguments()
+
+    print("=" * 80)
+    print("YOLOv5 模型分析工具")
+    print("=" * 80)
+    print(f"分析文件夹: {args.folder}")
+    print(f"输出路径: {args.output if args.output else args.folder}")
+    print(f"设备: {args.device if args.device else '自动选择'}")
+    print(f"输入尺寸: {args.input_size[0]}x{args.input_size[1]}")
+    print(f"推理测试次数: {args.num_runs}")
+    print("=" * 80)
+
     # 检查thop库是否可用
     if not THOP_AVAILABLE:
         print("警告: thop库未安装，GFLOPs计算将不可用")
         print("请运行: pip install thop")
-    
+
     # 获取所有模型
-    models = get_all_best_models()
+    models = get_all_best_models(args.folder)
     if not models:
-        print("未找到任何best.pt模型文件！")
+        print(f"在 {args.folder} 中未找到任何best.pt模型文件！")
+        print("请确保文件夹路径正确，且包含训练结果子文件夹")
         return
-    
-    print(f"找到 {len(models)} 个模型:")
+
+    print(f"\n找到 {len(models)} 个模型:")
     for model_path in models:
         print(f"  - {model_path.parent.parent.name}: {model_path}")
-    
+
     # 选择设备
-    device = select_device('')
+    device = select_device(args.device)
     print(f"\n使用设备: {device}")
-    
+
     # 分析每个模型
     models_info = []
     for i, model_path in enumerate(models, 1):
         print(f"\n[{i}/{len(models)}] 分析模型: {model_path.parent.parent.name}")
-        model_info = analyze_model(model_path, device)
+        model_info = analyze_model(model_path, device, tuple(args.input_size), args.num_runs)
         models_info.append(model_info)
-    
-    # 创建输出目录
-    output_path = Path("runs/train200epoch")
+
+    # 确定输出路径
+    output_path = Path(args.output) if args.output else Path(args.folder)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     # 创建汇总报告
     create_summary_report(models_info, output_path)
-    
+
     # 保存详细JSON结果
     json_path = output_path / "模型分析详细结果.json"
     with open(json_path, 'w', encoding='utf-8') as f:
         json.dump(models_info, f, indent=2, ensure_ascii=False, default=str)
-    
+
     print(f"\n分析完成！")
     print(f"详细JSON结果: {json_path}")
+    print("=" * 80)
 
 if __name__ == "__main__":
     main() 

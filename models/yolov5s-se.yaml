@@ -1,0 +1,86 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+# YOLOv5s with SE (Squeeze-and-Excitation) Attention Mechanism
+# 基于GUIDE/SE.md设计，在C3模块后添加SE注意力机制
+# 
+# SE注意力机制特点：
+# 1. 通过全局平均池化获取通道级全局信息
+# 2. 使用两个FC层学习通道间的相互依赖关系
+# 3. 生成通道权重并重新校准特征响应
+# 4. 提升模型对重要特征的关注能力
+#
+# Author: Augment Agent (Claude Sonnet 4 by Anthropic)
+# Created: 2025-07-05
+# Based on: models/yolov5s.yaml + GUIDE/SE.md
+
+# Parameters
+nc: 3 # number of classes
+depth_multiple: 0.33 # model depth multiple
+width_multiple: 0.50 # layer channel multiple
+anchors:
+  - [10, 13, 16, 30, 33, 23] # P3/8
+  - [30, 61, 62, 45, 59, 119] # P4/16
+  - [116, 90, 156, 198, 373, 326] # P5/32
+
+# YOLOv5 v6.0 backbone with SE attention
+backbone:
+  # [from, number, module, args]
+  [
+    [-1, 1, Conv, [64, 6, 2, 2]], # 0-P1/2
+    [-1, 1, Conv, [128, 3, 2]], # 1-P2/4
+    [-1, 3, C3, [128]], # 2
+    [-1, 1, SEBlock, []], # 3-SE attention after C3 (自动获取通道数)
+    [-1, 1, Conv, [256, 3, 2]], # 4-P3/8
+    [-1, 6, C3, [256]], # 5
+    [-1, 1, SEBlock, []], # 6-SE attention after C3 (自动获取通道数)
+    [-1, 1, Conv, [512, 3, 2]], # 7-P4/16
+    [-1, 9, C3, [512]], # 8
+    [-1, 1, SEBlock, []], # 9-SE attention after C3 (自动获取通道数)
+    [-1, 1, Conv, [1024, 3, 2]], # 10-P5/32
+    [-1, 3, C3, [1024]], # 11
+    [-1, 1, SEBlock, []], # 12-SE attention after C3 (自动获取通道数)
+    [-1, 1, SPPF, [1024, 5]], # 13
+  ]
+
+# YOLOv5 v6.0 head with SE attention
+head: [
+    [-1, 1, Conv, [512, 1, 1]], # 14
+    [-1, 1, nn.Upsample, [None, 2, "nearest"]], # 15
+    [[-1, 9], 1, Concat, [1]], # 16 cat backbone P4 (注意：索引从6改为9，因为添加了SE层)
+    [-1, 3, C3, [512, False]], # 17
+    [-1, 1, SEBlock, []], # 18-SE attention after C3 (自动获取通道数)
+
+    [-1, 1, Conv, [256, 1, 1]], # 19
+    [-1, 1, nn.Upsample, [None, 2, "nearest"]], # 20
+    [[-1, 6], 1, Concat, [1]], # 21 cat backbone P3 (注意：索引从4改为6，因为添加了SE层)
+    [-1, 3, C3, [256, False]], # 22 (P3/8-small)
+    [-1, 1, SEBlock, []], # 23-SE attention after C3 (自动获取通道数)
+
+    [-1, 1, Conv, [256, 3, 2]], # 24
+    [[-1, 18], 1, Concat, [1]], # 25 cat head P4 (注意：索引从14改为18，因为添加了SE层)
+    [-1, 3, C3, [512, False]], # 26 (P4/16-medium)
+    [-1, 1, SEBlock, []], # 27-SE attention after C3 (自动获取通道数)
+
+    [-1, 1, Conv, [512, 3, 2]], # 28
+    [[-1, 14], 1, Concat, [1]], # 29 cat head P5 (注意：索引从10改为14，因为添加了SE层)
+    [-1, 3, C3, [1024, False]], # 30 (P5/32-large)
+    [-1, 1, SEBlock, []], # 31-SE attention after C3 (自动获取通道数)
+
+    [[22, 26, 30], 1, Detect, [nc, anchors]], # 32 Detect(P3, P4, P5) (注意：索引更新)
+  ]
+
+# SE模块配置说明:
+# SEBlock参数: [channels, reduction_ratio]
+# - channels: 输入通道数，会自动从前一层获取
+# - reduction_ratio: 降维比例，默认为16，可以调整以平衡性能和计算量
+#
+# 性能影响:
+# + 提升特征表示能力，增强对重要通道的关注
+# + 可能提升检测精度，特别是对复杂场景
+# - 略微增加计算量和参数量
+# - 可能稍微降低推理速度
+#
+# 使用建议:
+# 1. 首次训练建议从预训练权重开始，让模型自动适应新结构
+# 2. 可以尝试调整reduction_ratio (8, 16, 32) 来平衡性能和效率
+# 3. 在验证集上对比原始YOLOv5s的性能来评估改进效果
