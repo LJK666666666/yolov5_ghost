@@ -42,10 +42,10 @@ noplots: false
 evolve: null
 evolve_population: data\hyps
 resume_evolve: null
-bucket: ''
+bucket: ""
 cache: null
 image_weights: false
-device: ''
+device: ""
 multi_scale: false
 single_cls: false
 optimizer: SGD
@@ -60,7 +60,7 @@ label_smoothing: 0.0
 box_loss: wiou
 patience: 100
 freeze:
-- 0
+  - 0
 save_period: -1
 seed: 0
 local_rank: -1

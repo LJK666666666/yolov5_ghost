@@ -5,9 +5,11 @@
 ## 文档列表
 
 ### 📋 [EarlyStopping_Guide.md](./EarlyStopping_Guide.md)
+
 **YOLOv5 早停机制详细说明**
 
 深入解析YOLOv5的早停机制，包括：
+
 - 早停工作原理和评估标准
 - Fitness分数计算方法
 - 默认配置参数说明
@@ -20,6 +22,7 @@
 ## 更多指南
 
 如需更多技术指南，请参考：
+
 - [官方YOLOv5文档](https://docs.ultralytics.com/yolov5/)
 - [训练自定义数据集教程](https://docs.ultralytics.com/yolov5/tutorials/train_custom_data/)
 - [模型导出指南](https://docs.ultralytics.com/yolov5/tutorials/model_export/)

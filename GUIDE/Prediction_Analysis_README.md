@@ -25,10 +25,10 @@ python model_prediction_analysis.py
 
 # 自定义参数
 python model_prediction_analysis.py \
-    --weights runs/train200to300epoch/yolov5s_/weights/best.pt \
-    --data data/SafetyVests.v6 \
-    --output prediction_analysis \
-    --conf 0.25
+  --weights runs/train200to300epoch/yolov5s_/weights/best.pt \
+  --data data/SafetyVests.v6 \
+  --output prediction_analysis \
+  --conf 0.25
 ```
 
 ### 2. 查看分析结果
@@ -141,8 +141,8 @@ python model_prediction_analysis.py --conf 0.5
 
 # 分析特定模型
 python model_prediction_analysis.py \
-    --weights path/to/your/model.pt \
-    --output custom_analysis
+  --weights path/to/your/model.pt \
+  --output custom_analysis
 ```
 
 ## 📊 Jupyter Notebook分析
@@ -203,12 +203,14 @@ python model_prediction_analysis.py \
 ### 常见问题
 
 1. **模型加载失败**
+
    ```
    错误: 模型文件不存在
    解决: 检查权重文件路径是否正确
    ```
 
 2. **数据集路径错误**
+
    ```
    错误: 数据集路径不存在
    解决: 确认数据集目录结构正确
@@ -230,6 +232,7 @@ python model_prediction_analysis.py \
 ### JSON文件格式
 
 1. **overall_statistics.json**
+
    ```json
    {
      "train": {
@@ -244,7 +247,7 @@ python model_prediction_analysis.py \
    }
    ```
 
-2. **错误信息文件 (*_info.json)**
+2. **错误信息文件 (\*\_info.json)**
    ```json
    {
      "image_name": "example_image",
