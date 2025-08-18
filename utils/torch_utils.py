@@ -501,7 +501,7 @@ class SmoothEarlyStopping:
         self.total_epochs = epoch + 1
 
         # Add current fitness to history (convert to scalar if needed)
-        fitness_scalar = float(fitness.item()) if hasattr(fitness, 'item') else float(fitness)
+        fitness_scalar = float(fitness.item()) if hasattr(fitness, "item") else float(fitness)
         self.fitness_history.append(fitness_scalar)
 
         # Maintain sliding window
@@ -538,18 +538,22 @@ class SmoothEarlyStopping:
 
     def _log_stopping_info(self, epoch, current_fitness):
         """Log detailed information when stopping training."""
-        window_str = f"last {len(self.fitness_history)} epochs" if len(self.fitness_history) < self.window_size else f"last {self.window_size} epochs"
+        window_str = (
+            f"last {len(self.fitness_history)} epochs"
+            if len(self.fitness_history) < self.window_size
+            else f"last {self.window_size} epochs"
+        )
 
         # 安全地转换所有可能的numpy数组为Python原生类型
         def safe_float(value):
             try:
-                return float(value.item()) if hasattr(value, 'item') else float(value)
+                return float(value.item()) if hasattr(value, "item") else float(value)
             except (AttributeError, TypeError, ValueError):
                 return 0.0
 
         def safe_int(value):
             try:
-                return int(value.item()) if hasattr(value, 'item') else int(value)
+                return int(value.item()) if hasattr(value, "item") else int(value)
             except (AttributeError, TypeError, ValueError):
                 return 0
 
@@ -573,27 +577,30 @@ class SmoothEarlyStopping:
         Returns:
             dict: Dictionary containing current status information
         """
+
         def safe_float(value):
-            """安全地转换为float"""
+            """安全地转换为float."""
             try:
-                return float(value.item()) if hasattr(value, 'item') else float(value)
+                return float(value.item()) if hasattr(value, "item") else float(value)
             except (AttributeError, TypeError, ValueError):
                 return 0.0
 
         def safe_int(value):
-            """安全地转换为int"""
+            """安全地转换为int."""
             try:
-                return int(value.item()) if hasattr(value, 'item') else int(value)
+                return int(value.item()) if hasattr(value, "item") else int(value)
             except (AttributeError, TypeError, ValueError):
                 return 0
 
         return {
-            'current_avg_fitness': safe_float(self.current_avg_fitness),
-            'best_avg_fitness': safe_float(self.best_avg_fitness),
-            'best_avg_epoch': safe_int(self.best_avg_epoch),
-            'window_size': len(self.fitness_history),
-            'epochs_since_improvement': safe_int(self.total_epochs - 1 - self.best_avg_epoch if self.total_epochs > 0 else 0),
-            'improvement_count': safe_int(self.improvement_count)
+            "current_avg_fitness": safe_float(self.current_avg_fitness),
+            "best_avg_fitness": safe_float(self.best_avg_fitness),
+            "best_avg_epoch": safe_int(self.best_avg_epoch),
+            "window_size": len(self.fitness_history),
+            "epochs_since_improvement": safe_int(
+                self.total_epochs - 1 - self.best_avg_epoch if self.total_epochs > 0 else 0
+            ),
+            "improvement_count": safe_int(self.improvement_count),
         }
 
 
