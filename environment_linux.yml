@@ -28,10 +28,10 @@ dependencies:
   - notebook
   - pip
   - pip:
-    - ultralytics
-    - roboflow
-    - clearml
-    - comet-ml
-    - wandb
-    - gitpython
-    - setuptools>=65.5.1
+      - ultralytics
+      - roboflow
+      - clearml
+      - comet-ml
+      - wandb
+      - gitpython
+      - setuptools>=65.5.1
