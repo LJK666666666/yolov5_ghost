@@ -2,7 +2,7 @@
 
 # YOLOv5s with SE (Squeeze-and-Excitation) Attention Mechanism
 # 基于GUIDE/SE.md设计，在C3模块后添加SE注意力机制
-# 
+#
 # SE注意力机制特点：
 # 1. 通过全局平均池化获取通道级全局信息
 # 2. 使用两个FC层学习通道间的相互依赖关系
@@ -68,7 +68,6 @@ head: [
 
     [[22, 26, 30], 1, Detect, [nc, anchors]], # 32 Detect(P3, P4, P5) (注意：索引更新)
   ]
-
 # SE模块配置说明:
 # SEBlock参数: [channels, reduction_ratio]
 # - channels: 输入通道数，会自动从前一层获取
