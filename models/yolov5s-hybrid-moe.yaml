@@ -2,7 +2,7 @@
 
 # YOLOv5s with Hybrid MoE (Shared Expert + Sparse Experts) Architecture
 # 基于GUIDE/MOE2.md设计的混合式稀疏MoE架构
-# 
+#
 # 创新特性：
 # 1. 共享专家(Shared Expert) + 稀疏专家(Sparse Experts)混合架构
 # 2. 共享专家处理通用特征，专业专家处理特定特征
@@ -65,7 +65,6 @@ head: [
 
     [[17, 20, 23], 1, Detect, [nc, anchors, [128, 256, 512]]], # Detect(P3, P4, P5)
   ]
-
 # 参数说明:
 # C3HybridMoE: [channels, n, shortcut, g, e, num_experts, top_k, shared_expert_ratio]
 # - channels: 输出通道数

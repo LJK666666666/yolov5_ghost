@@ -13,11 +13,11 @@
 在训练开始前，额外加载您训练好的教师模型，并将其设置为评估模式（.eval()）且不计算梯度（torch.no_grad()）。
 
 在训练循环（for epoch in range(start_epoch, epochs):）内部，对于每一个批次的数据：
-a.  首先，让学生模型（您正在训练的YOLOv5s）进行前向传播，得到学生模型的预测输出student_pred。
-b.  然后，将同样的数据输入给教师模型，得到教师模型的预测输出teacher_pred。
-c.  计算学生模型与真实标签之间的原始YOLOv5损失 loss_hard。
-d.  计算学生模型的预测与教师模型的预测之间的蒸馏损失 loss_soft。这通常是计算两者输出的概率分布之间的KL散度（Kullback-Leibler Divergence）。
-e.  最终的总损失为 total_loss = (1 - alpha) * loss_hard + alpha * loss_soft，其中alpha是平衡两个损失的超参数。
-f.  对total_loss进行反向传播。
+a. 首先，让学生模型（您正在训练的YOLOv5s）进行前向传播，得到学生模型的预测输出student_pred。
+b. 然后，将同样的数据输入给教师模型，得到教师模型的预测输出teacher_pred。
+c. 计算学生模型与真实标签之间的原始YOLOv5损失 loss_hard。
+d. 计算学生模型的预测与教师模型的预测之间的蒸馏损失 loss_soft。这通常是计算两者输出的概率分布之间的KL散度（Kullback-Leibler Divergence）。
+e. 最终的总损失为 total_loss = (1 - alpha) _ loss_hard + alpha _ loss_soft，其中alpha是平衡两个损失的超参数。
+f. 对total_loss进行反向传播。
 
 从头训练学生模型：使用这个修改后的训练流程，来训练您的YOLOv5s模型。

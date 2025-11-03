@@ -12,7 +12,7 @@
 
 找到ComputeLoss类：这是计算所有损失的核心类。
 
-定位分类损失：在__init__方法中，您会看到分类损失的定义，它通常是：
+定位分类损失：在**init**方法中，您会看到分类损失的定义，它通常是：
 
 self.BCEcls = nn.BCEWithLogitsLoss(pos_weight=BCEcls_pos_weight)
 
@@ -20,9 +20,9 @@ self.BCEcls = nn.BCEWithLogitsLoss(pos_weight=BCEcls_pos_weight)
 
 将您找到的FocalLoss类定义粘贴到这个文件中。
 
-在ComputeLoss的__init__方法中，用FocalLoss实例化一个新的损失函数：self.FocalLoss = FocalLoss(...)。
+在ComputeLoss的**init**方法中，用FocalLoss实例化一个新的损失函数：self.FocalLoss = FocalLoss(...)。
 
-在__call__方法中，找到计算分类损失lcls的地方，它原本调用的是self.BCEcls。
+在**call**方法中，找到计算分类损失lcls的地方，它原本调用的是self.BCEcls。
 
 将这一行替换为调用self.FocalLoss，并将模型的分类预测和真实的标签传入。您可能需要稍微调整数据的形状以匹配FocalLoss的输入要求。
 
