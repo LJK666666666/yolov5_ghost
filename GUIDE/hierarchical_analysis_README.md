@@ -7,17 +7,20 @@
 ## 主要特性
 
 ### 1. 智能层次化匹配
+
 - **解决传统问题**：避免将person身上的safety_vest预测误判为False Positive
 - **装备关联分析**：自动分析每个person的装备穿戴情况
 - **重叠检测**：通过IoU和重叠比例判断装备是否属于特定person
 
 ### 2. 四种装备状态分类
+
 - `fully_equipped`: 同时佩戴helmet和safety_vest
 - `helmet_only`: 仅佩戴helmet
-- `vest_only`: 仅佩戴safety_vest  
+- `vest_only`: 仅佩戴safety_vest
 - `no_equipment`: 未佩戴任何装备
 
 ### 3. 多层次错误分析
+
 - **Person检测错误**：Person级别的TP/FP/FN
 - **装备状态错误**：装备穿戴状态的分类错误
 - **独立组件错误**：不属于任何person的helmet/vest检测
@@ -25,14 +28,16 @@
 ## 使用方法
 
 ### 基本用法
+
 ```bash
 python hierarchical_safety_analysis.py \
-    --weights runs/rail_train300epoch/yolov5s_/weights/best.pt \
-    --data data/railroad-worker-detection \
-    --output hierarchical_analysis
+  --weights runs/rail_train300epoch/yolov5s_/weights/best.pt \
+  --data data/railroad-worker-detection \
+  --output hierarchical_analysis
 ```
 
 ### 参数说明
+
 - `--weights`: 模型权重文件路径
 - `--data`: 数据集根目录路径
 - `--output`: 分析结果输出目录
@@ -40,7 +45,9 @@ python hierarchical_safety_analysis.py \
 - `--overlap`: 装备重叠阈值 (默认: 0.3)
 
 ### 数据集要求
+
 数据集必须包含以下三个类别：
+
 - `safety_vest` (类别0)
 - `helmet` (类别1)
 - `person` (类别2)
@@ -48,6 +55,7 @@ python hierarchical_safety_analysis.py \
 ## 输出结果
 
 ### 目录结构
+
 ```
 hierarchical_analysis/
 ├── train/
@@ -65,23 +73,28 @@ hierarchical_analysis/
 ### 统计指标
 
 #### Person检测性能
+
 - **Precision**: TP / (TP + FP)
-- **Recall**: TP / (TP + FN)  
-- **F1-Score**: 2 * (Precision * Recall) / (Precision + Recall)
+- **Recall**: TP / (TP + FN)
+- **F1-Score**: 2 _ (Precision _ Recall) / (Precision + Recall)
 
 #### 装备状态准确率
+
 每种装备状态的分类准确率：
+
 - `fully_equipped`: 完全装备状态的准确率
 - `helmet_only`: 仅helmet状态的准确率
 - `vest_only`: 仅vest状态的准确率
 - `no_equipment`: 无装备状态的准确率
 
 #### 组件检测统计
+
 独立helmet和safety_vest的检测统计（不属于任何person的组件）
 
 ## 与传统分析的区别
 
 ### 传统分析问题
+
 ```python
 # 传统方法的问题场景
 真实标签: person (类别2) 在区域A
@@ -90,6 +103,7 @@ hierarchical_analysis/
 ```
 
 ### 层次化分析解决方案
+
 ```python
 # 层次化方法的处理
 1. 检测到person在区域A
@@ -102,12 +116,15 @@ hierarchical_analysis/
 ## 核心算法
 
 ### 重叠比例计算
+
 ```python
 overlap_ratio = intersection_area / small_box_area
 ```
+
 当重叠比例 >= overlap_threshold 时，认为装备属于该person。
 
 ### 装备状态判断
+
 ```python
 if has_helmet and has_vest:
     status = "fully_equipped"
@@ -122,6 +139,7 @@ else:
 ## 可视化说明
 
 生成的图像使用不同颜色标识：
+
 - **绿色框**: 正确的person检测和装备状态
 - **红色框**: 错误的person检测或装备状态
 - **蓝色框**: 漏检的person
