@@ -117,7 +117,7 @@ class CoordAtt(nn.Module):
 
     def __init__(self, inp, oup, reduction=32):
         """Initialize Coordinate Attention with input channels, output channels and reduction ratio."""
-        super(CoordAtt, self).__init__()
+        super().__init__()
         self.pool_h = nn.AdaptiveAvgPool2d((None, 1))
         self.pool_w = nn.AdaptiveAvgPool2d((1, None))
 
@@ -129,7 +129,6 @@ class CoordAtt(nn.Module):
 
         self.conv_h = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
         self.conv_w = nn.Conv2d(mip, oup, kernel_size=1, stride=1, padding=0)
-
 
     def forward(self, x):
         """Forward pass applying coordinate attention mechanism."""
@@ -164,7 +163,7 @@ SE注意力机制通过学习通道间的相互依赖关系来重新校准特征
 ```python
 class SEBlock(nn.Module):
     """
-    Squeeze-and-Excitation Block
+    Squeeze-and-Excitation Block.
 
     SE注意力机制模块，通过学习通道间的相互依赖关系来重新校准特征响应。
     支持自适应通道数检测，可以在YAML配置中不指定通道数。
@@ -175,8 +174,8 @@ class SEBlock(nn.Module):
     """
 
     def __init__(self, c1=None, reduction=16):
-        """初始化SE模块"""
-        super(SEBlock, self).__init__()
+        """初始化SE模块."""
+        super().__init__()
         self.c1 = c1
         self.reduction = reduction
         self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 全局平均池化
@@ -188,16 +187,16 @@ class SEBlock(nn.Module):
             self.fc = None  # 延迟初始化
 
     def _build_fc_layers(self, c1):
-        """构建FC层"""
+        """构建FC层."""
         self.fc = nn.Sequential(
             nn.Linear(c1, c1 // self.reduction, bias=False),  # 降维
-            nn.ReLU(inplace=True),                            # 激活
+            nn.ReLU(inplace=True),  # 激活
             nn.Linear(c1 // self.reduction, c1, bias=False),  # 升维
-            nn.Sigmoid()                                      # 生成权重
+            nn.Sigmoid(),  # 生成权重
         )
 
     def forward(self, x):
-        """前向传播"""
+        """前向传播."""
         b, c, _, _ = x.size()
 
         # 如果FC层未初始化，则根据输入自动初始化
@@ -221,20 +220,20 @@ class SEBlock(nn.Module):
 ```python
 class SEBottleneck(Bottleneck):
     """
-    SE-Bottleneck: 集成SE注意力机制的瓶颈模块
+    SE-Bottleneck: 集成SE注意力机制的瓶颈模块.
 
     在标准Bottleneck的基础上添加SE注意力机制，增强特征表示能力。
     """
 
     def __init__(self, c1, c2, shortcut=True, g=1, e=0.5, reduction=16):
-        """初始化SE-Bottleneck模块"""
+        """初始化SE-Bottleneck模块."""
         super().__init__(c1, c2, shortcut, g, e)
         self.se = SEBlock(c2, reduction)  # 在输出通道上应用SE
 
     def forward(self, x):
-        """前向传播"""
+        """前向传播."""
         x = super().forward(x)  # 标准Bottleneck前向传播
-        x = self.se(x)          # 应用SE注意力
+        x = self.se(x)  # 应用SE注意力
         return x
 ```
 
@@ -243,13 +242,13 @@ class SEBottleneck(Bottleneck):
 ```python
 class C3SE(C3):
     """
-    C3-SE: 集成SE注意力机制的C3模块
+    C3-SE: 集成SE注意力机制的C3模块.
 
     将C3模块中的Bottleneck替换为SEBottleneck，增强特征表示能力。
     """
 
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, reduction=16):
-        """初始化C3-SE模块"""
+        """初始化C3-SE模块."""
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(SEBottleneck(c_, c_, shortcut, g, e=1.0, reduction=reduction) for _ in range(n)))
@@ -264,14 +263,14 @@ class C3SE(C3):
 ```python
 class Expert(nn.Module):
     """
-    专家网络
+    专家网络.
 
     MoE架构中的单个专家，可以是卷积层、瓶颈模块等不同类型。
     """
 
-    def __init__(self, c1, c2, k=3, s=1, p=None, g=1, act=True, expert_type='conv'):
+    def __init__(self, c1, c2, k=3, s=1, p=None, g=1, act=True, expert_type="conv"):
         """
-        初始化专家网络
+        初始化专家网络.
 
         Args:
             c1: 输入通道数
@@ -279,21 +278,21 @@ class Expert(nn.Module):
             k, s, p, g, act: 卷积参数
             expert_type: 专家类型 ('conv', 'bottleneck', 'ghost')
         """
-        super(Expert, self).__init__()
+        super().__init__()
         self.expert_type = expert_type
 
-        if expert_type == 'conv':
+        if expert_type == "conv":
             self.expert = Conv(c1, c2, k, s, p, g, act)
-        elif expert_type == 'bottleneck':
+        elif expert_type == "bottleneck":
             self.expert = Bottleneck(c1, c2, shortcut=False, g=g, e=0.5)
-        elif expert_type == 'ghost':
+        elif expert_type == "ghost":
             self.expert = GhostBottleneck(c1, c2, k, s)
         else:
             # 默认使用标准卷积
             self.expert = Conv(c1, c2, k, s, p, g, act)
 
     def forward(self, x):
-        """前向传播"""
+        """前向传播."""
         return self.expert(x)
 ```
 
@@ -302,14 +301,14 @@ class Expert(nn.Module):
 ```python
 class SparseGating(nn.Module):
     """
-    稀疏门控网络
+    稀疏门控网络.
 
     负责计算每个专家的权重，并实现Top-K选择和负载均衡。
     """
 
     def __init__(self, c1, num_experts, top_k=2, capacity_factor=1.25):
         """
-        初始化门控网络
+        初始化门控网络.
 
         Args:
             c1: 输入通道数
@@ -317,25 +316,20 @@ class SparseGating(nn.Module):
             top_k: 选择的专家数量
             capacity_factor: 容量因子，用于负载均衡
         """
-        super(SparseGating, self).__init__()
+        super().__init__()
         self.num_experts = int(num_experts)
         self.top_k = int(top_k)  # 确保top_k是整数
         self.capacity_factor = float(capacity_factor)
 
         # 门控网络：全局平均池化 + 线性层
-        self.gate = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Flatten(),
-            nn.Linear(c1, num_experts),
-            nn.Softmax(dim=-1)
-        )
+        self.gate = nn.Sequential(nn.AdaptiveAvgPool2d(1), nn.Flatten(), nn.Linear(c1, num_experts), nn.Softmax(dim=-1))
 
         # 噪声用于训练时的负载均衡
         self.noise_std = 0.1
 
     def forward(self, x):
         """
-        前向传播
+        前向传播.
 
         Args:
             x: 输入特征 [batch_size, channels, height, width]
@@ -367,7 +361,7 @@ class SparseGating(nn.Module):
         return top_k_gates, top_k_indices, load_balancing_loss
 
     def _compute_load_balancing_loss(self, gate_scores):
-        """计算负载均衡损失"""
+        """计算负载均衡损失."""
         # 计算每个专家的平均门控分数
         mean_gate_scores = torch.mean(gate_scores, dim=0)
 
@@ -375,7 +369,7 @@ class SparseGating(nn.Module):
         target_load = 1.0 / self.num_experts
 
         # 计算负载均衡损失（方差）
-        load_balancing_loss = torch.var(mean_gate_scores) / (target_load ** 2)
+        load_balancing_loss = torch.var(mean_gate_scores) / (target_load**2)
 
         return load_balancing_loss
 ```
@@ -385,15 +379,14 @@ class SparseGating(nn.Module):
 ```python
 class MoELayer(nn.Module):
     """
-    MoE层
+    MoE层.
 
     结合多个专家网络和门控机制，实现稀疏激活的混合专家架构。
     """
 
-    def __init__(self, c1, c2, num_experts=4, top_k=2, expert_type='conv',
-                 k=3, s=1, p=None, g=1, act=True):
+    def __init__(self, c1, c2, num_experts=4, top_k=2, expert_type="conv", k=3, s=1, p=None, g=1, act=True):
         """
-        初始化MoE层
+        初始化MoE层.
 
         Args:
             c1: 输入通道数
@@ -403,25 +396,22 @@ class MoELayer(nn.Module):
             expert_type: 专家类型
             k, s, p, g, act: 卷积参数
         """
-        super(MoELayer, self).__init__()
+        super().__init__()
         self.num_experts = num_experts
         self.top_k = top_k
 
         # 创建专家网络
-        self.experts = nn.ModuleList([
-            Expert(c1, c2, k, s, p, g, act, expert_type)
-            for _ in range(num_experts)
-        ])
+        self.experts = nn.ModuleList([Expert(c1, c2, k, s, p, g, act, expert_type) for _ in range(num_experts)])
 
         # 门控网络
         self.gate = SparseGating(c1, num_experts, top_k)
 
         # 用于存储负载均衡损失（使用register_buffer避免deepcopy问题）
-        self.register_buffer('load_balancing_loss', torch.tensor(0.0))
+        self.register_buffer("load_balancing_loss", torch.tensor(0.0))
 
     def forward(self, x):
         """
-        前向传播
+        前向传播.
 
         Args:
             x: 输入特征 [batch_size, channels, height, width]
@@ -438,18 +428,27 @@ class MoELayer(nn.Module):
         self.load_balancing_loss = load_loss
 
         # 初始化输出
-        output = torch.zeros(batch_size, self.experts[0].expert.cv1.conv.out_channels if hasattr(self.experts[0].expert, 'cv1') else self.experts[0].expert.conv.out_channels, height, width, device=x.device, dtype=x.dtype)
+        output = torch.zeros(
+            batch_size,
+            self.experts[0].expert.cv1.conv.out_channels
+            if hasattr(self.experts[0].expert, "cv1")
+            else self.experts[0].expert.conv.out_channels,
+            height,
+            width,
+            device=x.device,
+            dtype=x.dtype,
+        )
 
         # 对每个选中的专家进行计算
         for i in range(self.top_k):
             # 获取当前专家的索引和权重
             expert_indices = indices[:, i]  # [batch_size]
-            expert_weights = gates[:, i:i+1]  # [batch_size, 1]
+            expert_weights = gates[:, i : i + 1]  # [batch_size, 1]
 
             # 为每个专家处理对应的样本
             for expert_idx in range(self.num_experts):
                 # 找到使用当前专家的样本
-                mask = (expert_indices == expert_idx)
+                mask = expert_indices == expert_idx
                 if mask.sum() == 0:
                     continue
 
@@ -473,25 +472,25 @@ class MoELayer(nn.Module):
 ```python
 class C3MoE(C3):
     """
-    C3-MoE模块
+    C3-MoE模块.
 
     将C3模块中的Bottleneck替换为MoEBottleneck，实现混合专家架构。
     """
 
     def __init__(self, c1, c2, n=1, shortcut=True, g=1, e=0.5, num_experts=4, top_k=2):
-        """初始化C3-MoE模块"""
+        """初始化C3-MoE模块."""
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(*(MoEBottleneck(c_, c_, shortcut, g, e=1.0,
-                                             num_experts=num_experts, top_k=top_k)
-                               for _ in range(n)))
+        self.m = nn.Sequential(
+            *(MoEBottleneck(c_, c_, shortcut, g, e=1.0, num_experts=num_experts, top_k=top_k) for _ in range(n))
+        )
 
     def get_load_balancing_loss(self):
-        """获取所有MoE层的负载均衡损失"""
+        """获取所有MoE层的负载均衡损失."""
         total_loss = 0.0
         count = 0
         for module in self.m:
-            if hasattr(module, 'cv2') and hasattr(module.cv2, 'load_balancing_loss'):
+            if hasattr(module, "cv2") and hasattr(module.cv2, "load_balancing_loss"):
                 loss_val = module.cv2.load_balancing_loss
                 if isinstance(loss_val, torch.Tensor):
                     total_loss += loss_val.item()
@@ -508,7 +507,7 @@ WFF模块让网络自主学习不同特征图的重要性权重，实现更智�
 ```python
 class WeightedFeatureFusion(nn.Module):
     """
-    加权特征融合模块 - 创新亮点三：构建"加权"的特征融合颈部网络
+    加权特征融合模块 - 创新亮点三：构建"加权"的特征融合颈部网络.
 
     核心思想：YOLOv5的FPN+PAN结构在融合不同层级的特征图时，用的是简单粗暴的Concat（拼接）。
     但不同层级的特征对于最终检测的贡献度不一定相等。我们可以让网络自己去学习不同特征图的"重要性"，
@@ -520,13 +519,13 @@ class WeightedFeatureFusion(nn.Module):
 
     def __init__(self, num_inputs, eps=1e-4):
         """
-        初始化加权特征融合模块
+        初始化加权特征融合模块.
 
         Args:
             num_inputs (int): 输入特征图的数量
             eps (float): 防止除零的小数值
         """
-        super(WeightedFeatureFusion, self).__init__()
+        super().__init__()
         self.num_inputs = num_inputs
         self.eps = eps
 
@@ -536,7 +535,7 @@ class WeightedFeatureFusion(nn.Module):
 
     def forward(self, x):
         """
-        前向传播
+        前向传播.
 
         Args:
             x (list): 包含多个特征图的列表，每个特征图的尺寸必须相同 [C, H, W]
@@ -565,8 +564,10 @@ WIoU损失函数通过动态聚焦机制提升小目标和遮挡目标的检测�
 class WIoU:
     """
     Wise-IoU loss function.
-    https://arxiv.org/abs/2301.10051
+
+    https://arxiv.org/abs/2301.10051.
     """
+
     def __init__(self, pred, target, eps=1e-7, alpha=2.0, beta=4.0):
         """Initialize WIoU loss with prediction and target boxes."""
         self.eps = eps
@@ -594,7 +595,7 @@ class WIoU:
         ch = torch.max(pred_y2, target_y2) - torch.min(pred_y1, target_y1)
 
         # R_WIoU calculation according to paper formula (3.14)
-        r_wiou = torch.exp(dist / (cw ** 2 + ch ** 2 + self.eps))
+        r_wiou = torch.exp(dist / (cw**2 + ch**2 + self.eps))
 
         # Final WIoU loss calculation according to paper formula (3.13)
         # Use a detachable beta to construct the focusing factor
@@ -652,28 +653,27 @@ class FocalLoss(nn.Module):
 ```python
 class DistillationLoss(nn.Module):
     """
-    知识蒸馏损失函数
-    创新亮点四：引入"知识蒸馏"提升小模型性能
+    知识蒸馏损失函数 创新亮点四：引入"知识蒸馏"提升小模型性能.
 
     计算学生模型和教师模型输出之间的蒸馏损失，使用KL散度来衡量两个概率分布的差异。
     """
 
     def __init__(self, temperature=4.0, alpha=0.7):
         """
-        初始化蒸馏损失函数
+        初始化蒸馏损失函数.
 
         Args:
             temperature (float): 温度参数，用于软化概率分布
             alpha (float): 蒸馏损失的权重，范围[0,1]
         """
-        super(DistillationLoss, self).__init__()
+        super().__init__()
         self.temperature = temperature
         self.alpha = alpha
-        self.kl_div = nn.KLDivLoss(reduction='batchmean')
+        self.kl_div = nn.KLDivLoss(reduction="batchmean")
 
     def forward(self, student_outputs, teacher_outputs, targets, hard_loss):
         """
-        计算蒸馏损失
+        计算蒸馏损失.
 
         Args:
             student_outputs: 学生模型的输出 [batch_size, anchors, grid, grid, classes+5]
@@ -697,7 +697,7 @@ class DistillationLoss(nn.Module):
             teacher_soft = F.softmax(teacher_cls / self.temperature, dim=-1)
 
             # 计算KL散度
-            kl_loss = self.kl_div(student_soft, teacher_soft) * (self.temperature ** 2)
+            kl_loss = self.kl_div(student_soft, teacher_soft) * (self.temperature**2)
             soft_loss += kl_loss
 
         # 平均所有检测层的损失
@@ -721,13 +721,11 @@ if opt.distillation and opt.teacher_weights:
         teacher_ckpt = torch.load(opt.teacher_weights, map_location="cpu")
 
         # 获取教师模型的原始类别数
-        teacher_nc = teacher_ckpt["model"].yaml.get('nc', nc)
+        teacher_nc = teacher_ckpt["model"].yaml.get("nc", nc)
         LOGGER.info(f"📚 Teacher model classes: {teacher_nc}, Student model classes: {nc}")
 
         # 使用教师模型的原始配置创建模型
-        teacher_model = Model(
-            teacher_ckpt["model"].yaml, ch=3, nc=teacher_nc, anchors=hyp.get("anchors")
-        ).to(device)
+        teacher_model = Model(teacher_ckpt["model"].yaml, ch=3, nc=teacher_nc, anchors=hyp.get("anchors")).to(device)
         teacher_csd = teacher_ckpt["model"].float().state_dict()
         teacher_model.load_state_dict(teacher_csd, strict=False)
         teacher_model.train()  # 设置为训练模式，确保输出格式与学生模型一致
@@ -736,7 +734,7 @@ if opt.distillation and opt.teacher_weights:
         for param in teacher_model.parameters():
             param.requires_grad = False
 
-        LOGGER.info(f"✅ Teacher model loaded successfully!")
+        LOGGER.info("✅ Teacher model loaded successfully!")
 
     except Exception as e:
         LOGGER.error(f"❌ Failed to load teacher model: {e}")
@@ -745,7 +743,7 @@ if opt.distillation and opt.teacher_weights:
 
 # 训练循环中的蒸馏实现
 # Forward
-with torch.amp.autocast('cuda', enabled=amp):
+with torch.amp.autocast("cuda", enabled=amp):
     pred = model(imgs)  # forward
 
     # 🎯 知识蒸馏：获取教师模型预测
@@ -756,13 +754,9 @@ with torch.amp.autocast('cuda', enabled=amp):
 
     # 计算损失（包含知识蒸馏）
     if opt.distillation and teacher_pred is not None:
-        loss, loss_items = compute_loss.__call_with_distillation__(
-            pred, teacher_pred, targets.to(device)
-        )
+        loss, loss_items = compute_loss.__call_with_distillation__(pred, teacher_pred, targets.to(device))
     else:
-        loss, loss_items = compute_loss(
-            pred, targets.to(device)
-        )  # loss scaled by batch_size
+        loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
 ```
 
 ### 9. 平滑早停机制实现 (utils/torch_utils.py)
@@ -824,7 +818,7 @@ class SmoothEarlyStopping:
         self.total_epochs = epoch + 1
 
         # Add current fitness to history (convert to scalar if needed)
-        fitness_scalar = float(fitness.item()) if hasattr(fitness, 'item') else float(fitness)
+        fitness_scalar = float(fitness.item()) if hasattr(fitness, "item") else float(fitness)
         self.fitness_history.append(fitness_scalar)
 
         # Maintain sliding window
@@ -914,14 +908,18 @@ def load_mosaic(self, index):
         np.clip(x, 0, 2 * s, out=x)  # clip when using random_perspective()
 
     # Augment
-    img4, labels4, segments4 = copy_paste(img4, labels4, segments4, p=self.hyp['copy_paste'])
-    img4, labels4 = random_perspective(img4, labels4, segments4,
-                                       degrees=self.hyp['degrees'],
-                                       translate=self.hyp['translate'],
-                                       scale=self.hyp['scale'],
-                                       shear=self.hyp['shear'],
-                                       perspective=self.hyp['perspective'],
-                                       border=self.mosaic_border)  # border to remove
+    img4, labels4, segments4 = copy_paste(img4, labels4, segments4, p=self.hyp["copy_paste"])
+    img4, labels4 = random_perspective(
+        img4,
+        labels4,
+        segments4,
+        degrees=self.hyp["degrees"],
+        translate=self.hyp["translate"],
+        scale=self.hyp["scale"],
+        shear=self.hyp["shear"],
+        perspective=self.hyp["perspective"],
+        border=self.mosaic_border,
+    )  # border to remove
 
     return img4, labels4
 ```
@@ -944,8 +942,9 @@ def mixup(im, labels, im2, labels2):
 实现几何变换增强，包括旋转、平移、缩放、剪切等：
 
 ```python
-def random_perspective(im, targets=(), segments=(), degrees=10, translate=.1, scale=.1, shear=10, perspective=0.0,
-                       border=(0, 0)):
+def random_perspective(
+    im, targets=(), segments=(), degrees=10, translate=0.1, scale=0.1, shear=10, perspective=0.0, border=(0, 0)
+):
     """
     Applies random perspective transformation to an image and its corresponding bounding boxes, segments, and keypoints.
 
@@ -1148,78 +1147,82 @@ head: [
     [4, 1, Conv, [256, 1, 1]], # 17: 将P3特征图从128调整为256通道
     [[-1, 16], 1, WeightedFeatureFusion, [2]], # 18: 加权融合 P3(256) + 上采样特征(256)
     [-1, 3, C3, [256, False]], # 19 (P3/8-small)
-]
+  ]
 ```
 
 ---
 
 ## 🎯 超参数配置
 
-### 推荐数据增强配置 (data/hyps/hyp.recommand.yaml)
+### 推荐数据增强配置 (data/hyps/hyp.recommend.yaml)
 
 项目使用了优化的数据增强策略，专门针对安全背心检测任务进行调优：
 
 ```yaml
 # === 学习率和优化器配置 ===
-lr0: 0.01  # initial learning rate (SGD=1E-2, Adam=1E-3)
-lrf: 0.1  # final OneCycleLR learning rate (lr0 * lrf)
-momentum: 0.937  # SGD momentum/Adam beta1
-weight_decay: 0.0005  # optimizer weight decay 5e-4
-warmup_epochs: 3.0  # warmup epochs (fractions ok)
-warmup_momentum: 0.8  # warmup initial momentum
-warmup_bias_lr: 0.1  # warmup initial bias lr
+lr0: 0.01 # initial learning rate (SGD=1E-2, Adam=1E-3)
+lrf: 0.1 # final OneCycleLR learning rate (lr0 * lrf)
+momentum: 0.937 # SGD momentum/Adam beta1
+weight_decay: 0.0005 # optimizer weight decay 5e-4
+warmup_epochs: 3.0 # warmup epochs (fractions ok)
+warmup_momentum: 0.8 # warmup initial momentum
+warmup_bias_lr: 0.1 # warmup initial bias lr
 
 # === 损失函数权重配置 ===
-box: 0.05  # box loss gain
-cls: 0.5   # cls loss gain
-cls_pw: 1.0  # cls BCELoss positive_weight
-obj: 1.0  # obj loss gain (scale with pixels)
-obj_pw: 1.0  # obj BCELoss positive_weight
-iou_t: 0.20  # IoU training threshold
-anchor_t: 4.0  # anchor-multiple threshold
-fl_gamma: 0.0  # focal loss gamma (efficientDet default is gamma=1.5)
+box: 0.05 # box loss gain
+cls: 0.5 # cls loss gain
+cls_pw: 1.0 # cls BCELoss positive_weight
+obj: 1.0 # obj loss gain (scale with pixels)
+obj_pw: 1.0 # obj BCELoss positive_weight
+iou_t: 0.20 # IoU training threshold
+anchor_t: 4.0 # anchor-multiple threshold
+fl_gamma: 0.0 # focal loss gamma (efficientDet default is gamma=1.5)
 
 # === 🎨 数据增强配置 ===
 # 颜色空间增强
-hsv_h: 0.015  # HSV色调增强 (fraction) - 轻微调整，保持安全背心颜色特征
-hsv_s: 0.7    # HSV饱和度增强 (fraction) - 较强增强，适应不同光照条件
-hsv_v: 0.4    # HSV明度增强 (fraction) - 中等增强，模拟不同亮度环境
+hsv_h: 0.015 # HSV色调增强 (fraction) - 轻微调整，保持安全背心颜色特征
+hsv_s: 0.7 # HSV饱和度增强 (fraction) - 较强增强，适应不同光照条件
+hsv_v: 0.4 # HSV明度增强 (fraction) - 中等增强，模拟不同亮度环境
 
 # 几何变换增强
-degrees: 10.0     # 图像旋转角度 (+/- deg) - 从0改为10，模拟不同拍摄角度
-translate: 0.1    # 图像平移 (+/- fraction) - 模拟目标位置变化
-scale: 0.5        # 图像缩放 (+/- gain) - 模拟不同距离的目标
-shear: 2.0        # 图像剪切 (+/- deg) - 从0改为2，增加几何变换多样性
-perspective: 0.0  # 透视变换 (+/- fraction) - 保持为0，避免过度变形
+degrees: 10.0 # 图像旋转角度 (+/- deg) - 从0改为10，模拟不同拍摄角度
+translate: 0.1 # 图像平移 (+/- fraction) - 模拟目标位置变化
+scale: 0.5 # 图像缩放 (+/- gain) - 模拟不同距离的目标
+shear: 2.0 # 图像剪切 (+/- deg) - 从0改为2，增加几何变换多样性
+perspective: 0.0 # 透视变换 (+/- fraction) - 保持为0，避免过度变形
 
 # 翻转增强
-flipud: 0.0  # 上下翻转概率 - 保持为0，人体检测不适合上下翻转
-fliplr: 0.5  # 左右翻转概率 - 50%概率，增加数据多样性
+flipud: 0.0 # 上下翻转概率 - 保持为0，人体检测不适合上下翻转
+fliplr: 0.5 # 左右翻转概率 - 50%概率，增加数据多样性
 
 # 高级增强技术
-mosaic: 1.0      # Mosaic增强概率 - 100%使用，提升小目标检测能力
-mixup: 0.1       # Mixup增强概率 - 从0改为0.1，增加样本多样性
-copy_paste: 0.0  # Copy-Paste增强概率 - 保持为0，避免不自然的组合
+mosaic: 1.0 # Mosaic增强概率 - 100%使用，提升小目标检测能力
+mixup: 0.1 # Mixup增强概率 - 从0改为0.1，增加样本多样性
+copy_paste: 0.0 # Copy-Paste增强概率 - 保持为0，避免不自然的组合
 ```
 
 #### 数据增强策略说明
 
 **1. 颜色空间增强 (HSV)**
+
 - `hsv_h: 0.015`: 轻微的色调调整，保持安全背心的关键颜色特征
 - `hsv_s: 0.7`: 较强的饱和度增强，适应不同光照和天气条件
 - `hsv_v: 0.4`: 中等的明度增强，模拟从阴天到强光的各种环境
 
 **2. 几何变换增强**
+
 - `degrees: 10.0`: 适度的旋转增强，模拟不同的拍摄角度和人体姿态
 - `translate: 0.1`: 平移增强，提升模型对目标位置变化的鲁棒性
 - `scale: 0.5`: 缩放增强，模拟不同距离的检测目标
 - `shear: 2.0`: 轻微的剪切变换，增加几何变换的多样性
 
 **3. 翻转策略**
+
 - `flipud: 0.0`: 不使用上下翻转，因为人体检测中上下翻转不符合实际场景
 - `fliplr: 0.5`: 50%概率左右翻转，符合实际应用中的对称性
 
 **4. 高级增强技术**
+
 - `mosaic: 1.0`: 100%使用Mosaic增强，将4张图像拼接，特别有利于小目标检测
 - `mixup: 0.1`: 10%概率使用Mixup，通过图像混合增加样本多样性
 - `copy_paste: 0.0`: 不使用Copy-Paste，避免产生不自然的目标组合
@@ -1237,9 +1240,9 @@ copy_paste: 0.0  # Copy-Paste增强概率 - 保持为0，避免不自然的组�
 
 ```yaml
 # === 🎯 唯一修改：Focal Loss 难例挖掘配置 ===
-fl_gamma: 2.0  # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
-# 这是相对于 hyp.recommand.yaml 的唯一改动！
-# fl_gamma = 0: 等同于标准BCE损失（hyp.recommand.yaml的设置）
+fl_gamma: 2.0 # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
+# 这是相对于 hyp.recommend.yaml 的唯一改动！
+# fl_gamma = 0: 等同于标准BCE损失（hyp.recommend.yaml的设置）
 # fl_gamma = 2.0: 强力难例关注，适合复杂背景的安全背心检测
 #
 # Focal Loss公式: FL(p_t) = -α(1-p_t)^γ * log(p_t)
@@ -1252,6 +1255,7 @@ fl_gamma: 2.0  # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
 ## 📈 训练参数说明
 
 ### 通用参数
+
 - `--epochs 1000`: 训练1000个epoch
 - `--smooth-early-stop`: 启用平滑早停机制
 - `--smooth-patience 300`: 平滑早停耐心值300个epoch
@@ -1259,7 +1263,8 @@ fl_gamma: 2.0  # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
 - `--img-size 640`: 输入图像尺寸640x640
 
 ### 数据增强参数
-所有模型默认使用 `data/hyps/hyp.recommand.yaml` 中的优化数据增强配置：
+
+所有模型默认使用 `data/hyps/hyp.recommend.yaml` 中的优化数据增强配置：
 
 - **颜色增强**: `hsv_h=0.015, hsv_s=0.7, hsv_v=0.4`
 - **几何变换**: `degrees=10.0, translate=0.1, scale=0.5, shear=2.0`
@@ -1269,6 +1274,7 @@ fl_gamma: 2.0  # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
 这些参数经过专门调优，适合安全背心检测任务的特点。
 
 ### 特殊参数
+
 - `--box-loss wiou`: 启用WIoU损失函数
 - `--hyp data/hyps/hyp.focal_loss.yaml`: 使用Focal Loss超参数
 - `--distillation`: 启用知识蒸馏
@@ -1279,22 +1285,26 @@ fl_gamma: 2.0  # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
 ### 数据增强效果分析
 
 **1. Mosaic增强 (mosaic=1.0)**
+
 - 将4张图像拼接，增加小目标检测能力
 - 提升模型对复杂场景的适应性
 - 增加训练样本的多样性
 
 **2. 几何变换组合**
+
 - `degrees=10.0`: 模拟不同拍摄角度
 - `scale=0.5`: 适应不同距离的目标
 - `shear=2.0`: 增加几何变换多样性
 - `translate=0.1`: 提升位置鲁棒性
 
 **3. 颜色空间增强**
+
 - `hsv_s=0.7`: 适应不同光照条件
 - `hsv_v=0.4`: 模拟不同亮度环境
 - `hsv_h=0.015`: 保持安全背心颜色特征
 
 **4. Mixup增强 (mixup=0.1)**
+
 - 10%概率进行图像混合
 - 增加样本多样性，提升泛化能力
 - 有助于减少过拟合
@@ -1322,13 +1332,18 @@ fl_gamma: 2.0  # focal loss gamma - 从 0.0 改为 2.0，启用难例挖掘
 - **实用性考虑**: 避免不符合实际场景的增强方式（如上下翻转）
 
 **关键配置优化**:
+
 - Mosaic增强100%启用，显著提升小目标检测能力
 - 适度的几何变换（旋转10°、剪切2°），模拟真实拍摄条件
 - 强化饱和度增强（0.7），适应复杂光照环境
 - 引入Mixup增强（10%），增加样本多样性
 
 这些改进共同构成了一个全面的YOLOv5增强框架，在保持高效性的同时显著提升了检测性能。通过精心设计的数据增强策略，模型能够更好地适应真实工业环境中的各种挑战。
+
 ```
+
 ```
+
 ```
+
 ```

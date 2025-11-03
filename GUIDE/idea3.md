@@ -9,12 +9,11 @@
 创建新模块：在models/common.py文件中，创建一个新的模块类，例如WeightedFeatureFusion。
 
 class WeightedFeatureFusion(nn.Module):
-    def __init__(self, num_inputs):
-        super(WeightedFeatureFusion, self).__init__()
-        self.num_inputs = num_inputs
-        # 创建一个可学习的权重参数，每个输入对应一个权重
-        self.weights = nn.Parameter(torch.ones(num_inputs, dtype=torch.float32), requires_grad=True)
-        self.relu = nn.ReLU()
+def **init**(self, num_inputs):
+super(WeightedFeatureFusion, self).**init**()
+self.num_inputs = num_inputs # 创建一个可学习的权重参数，每个输入对应一个权重
+self.weights = nn.Parameter(torch.ones(num_inputs, dtype=torch.float32), requires_grad=True)
+self.relu = nn.ReLU()
 
     def forward(self, x): # x是一个包含多个特征图的列表
         # 归一化权重，确保其为正且和为1，增加稳定性
@@ -31,7 +30,7 @@ class WeightedFeatureFusion(nn.Module):
 
 定位Concat层：找到颈部网络（head部分）中所有用于特征融合的Concat层。例如：
 
-[[-1, 6], 1, Concat, [1]],  # 12, cat backbone P4
+[[-1, 6], 1, Concat, [1]], # 12, cat backbone P4
 
 替换为新模块：将Concat替换为您新创建的模块。您需要修改from字段，使其接收一个列表作为输入。这在YOLOv5的.yaml语法中是支持的。
 

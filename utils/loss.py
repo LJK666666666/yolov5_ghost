@@ -106,27 +106,27 @@ class QFocalLoss(nn.Module):
 class DistillationLoss(nn.Module):
     """
     知识蒸馏损失函数
-    创新亮点四：引入"知识蒸馏"提升小模型性能
+    创新亮点四：引入"知识蒸馏"提升小模型性能.
 
     计算学生模型和教师模型输出之间的蒸馏损失，使用KL散度来衡量两个概率分布的差异。
     """
 
     def __init__(self, temperature=4.0, alpha=0.7):
         """
-        初始化蒸馏损失函数
+        初始化蒸馏损失函数.
 
         Args:
             temperature (float): 温度参数，用于软化概率分布
             alpha (float): 蒸馏损失的权重，范围[0,1]
         """
-        super(DistillationLoss, self).__init__()
+        super().__init__()
         self.temperature = temperature
         self.alpha = alpha
-        self.kl_div = nn.KLDivLoss(reduction='batchmean')
+        self.kl_div = nn.KLDivLoss(reduction="batchmean")
 
     def forward(self, student_outputs, teacher_outputs, targets, hard_loss):
         """
-        计算蒸馏损失
+        计算蒸馏损失.
 
         Args:
             student_outputs: 学生模型的输出 [batch_size, anchors, grid, grid, classes+5]
@@ -154,20 +154,23 @@ class DistillationLoss(nn.Module):
                 # 如果特征图大小不匹配，使用双线性插值调整教师模型输出
                 # 重塑为 [batch*anchors, classes, grid_y, grid_x] 进行插值
                 batch, anchors, _, _, classes = teacher_cls.shape
-                teacher_cls_reshaped = teacher_cls.permute(0, 1, 4, 2, 3).contiguous()  # [batch, anchors, classes, grid_y, grid_x]
-                teacher_cls_reshaped = teacher_cls_reshaped.view(batch * anchors, classes, teacher_shape[0], teacher_shape[1])
+                teacher_cls_reshaped = teacher_cls.permute(
+                    0, 1, 4, 2, 3
+                ).contiguous()  # [batch, anchors, classes, grid_y, grid_x]
+                teacher_cls_reshaped = teacher_cls_reshaped.view(
+                    batch * anchors, classes, teacher_shape[0], teacher_shape[1]
+                )
 
                 # 插值到学生模型的特征图大小
                 teacher_cls_reshaped = torch.nn.functional.interpolate(
-                    teacher_cls_reshaped,
-                    size=student_shape,
-                    mode='bilinear',
-                    align_corners=False
+                    teacher_cls_reshaped, size=student_shape, mode="bilinear", align_corners=False
                 )
 
                 # 恢复原始形状
                 teacher_cls = teacher_cls_reshaped.view(batch, anchors, classes, student_shape[0], student_shape[1])
-                teacher_cls = teacher_cls.permute(0, 1, 3, 4, 2).contiguous()  # [batch, anchors, grid_y, grid_x, classes]
+                teacher_cls = teacher_cls.permute(
+                    0, 1, 3, 4, 2
+                ).contiguous()  # [batch, anchors, grid_y, grid_x, classes]
 
             # 处理类别数不匹配的情况
             student_nc = student_cls.shape[-1]
@@ -188,7 +191,7 @@ class DistillationLoss(nn.Module):
             teacher_soft = torch.softmax(teacher_cls_flat / self.temperature, dim=-1)
 
             # 计算KL散度
-            kl_loss = self.kl_div(student_soft, teacher_soft) * (self.temperature ** 2)
+            kl_loss = self.kl_div(student_soft, teacher_soft) * (self.temperature**2)
             soft_loss += kl_loss
 
         # 计算总损失
@@ -231,14 +234,13 @@ class ComputeLoss:
         self.device = device
 
         # Box loss type selection
-        self.box_loss = getattr(opt, 'box_loss', 'ciou').lower() if opt else 'ciou'
+        self.box_loss = getattr(opt, "box_loss", "ciou").lower() if opt else "ciou"
 
         # 知识蒸馏相关参数
-        self.distillation = getattr(opt, 'distillation', False) if opt else False
+        self.distillation = getattr(opt, "distillation", False) if opt else False
         if self.distillation:
             self.distill_loss = DistillationLoss(
-                temperature=getattr(opt, 'distill_temp', 4.0),
-                alpha=getattr(opt, 'distill_alpha', 0.7)
+                temperature=getattr(opt, "distill_temp", 4.0), alpha=getattr(opt, "distill_alpha", 0.7)
             )
 
     def __call__(self, p, targets):  # predictions, targets
@@ -261,14 +263,14 @@ class ComputeLoss:
                 pxy = pxy.sigmoid() * 2 - 0.5
                 pwh = (pwh.sigmoid() * 2) ** 2 * anchors[i]
                 pbox = torch.cat((pxy, pwh), 1)  # predicted box
-                
+
                 # Bbox loss - choose between CIoU and WIoU
-                if self.box_loss == 'wiou':
+                if self.box_loss == "wiou":
                     loss_wiou = WIoU(pbox, tbox[i])
                     lbox += loss_wiou.wiou
                     # For objectness loss, we still need IoU values
-                    iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  
-                elif self.box_loss == 'ciou':
+                    iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()
+                elif self.box_loss == "ciou":
                     iou = bbox_iou(pbox, tbox[i], CIoU=True).squeeze()  # iou(prediction, target)
                     lbox += (1.0 - iou).mean()  # iou loss
                 else:
@@ -307,7 +309,7 @@ class ComputeLoss:
 
     def __call_with_distillation__(self, student_pred, teacher_pred, targets):
         """
-        计算包含知识蒸馏的损失
+        计算包含知识蒸馏的损失.
 
         Args:
             student_pred: 学生模型预测
@@ -326,11 +328,13 @@ class ComputeLoss:
             total_loss, soft_loss = self.distill_loss(student_pred, teacher_pred, targets, hard_loss)
 
             # 返回详细的损失信息
-            loss_items = torch.cat([
-                hard_loss_items,  # [lbox, lobj, lcls]
-                torch.tensor([soft_loss], device=self.device),  # soft loss
-                torch.tensor([total_loss], device=self.device)   # total loss
-            ]).detach()
+            loss_items = torch.cat(
+                [
+                    hard_loss_items,  # [lbox, lobj, lcls]
+                    torch.tensor([soft_loss], device=self.device),  # soft loss
+                    torch.tensor([total_loss], device=self.device),  # total loss
+                ]
+            ).detach()
 
             return total_loss, loss_items
         else:
@@ -402,6 +406,7 @@ class ComputeLoss:
 
         return tcls, tbox, indices, anch
 
+
 # =====================================================================================
 # 以下为WIoU损失函数代码
 # =====================================================================================
@@ -410,8 +415,9 @@ class ComputeLoss:
 class WIoU:
     """
     Wise-IoU loss function.
-    https://arxiv.org/abs/2301.10051
+    https://arxiv.org/abs/2301.10051.
     """
+
     def __init__(self, pred, target, eps=1e-7, alpha=2.0, beta=4.0):
         """Initialize WIoU loss with prediction and target boxes."""
         self.eps = eps
@@ -428,16 +434,16 @@ class WIoU:
         # Ensure pred and target have same shape
         pred = self.pred
         target = self.target
-        
+
         # Calculate the distance between the center points of the two bounding boxes
         dist = torch.sum((pred[:, :2] - target[:, :2]) ** 2, dim=1)
-        
+
         # Convert from center format (x, y, w, h) to corner format for enclosing box calculation
         pred_x1 = pred[:, 0] - pred[:, 2] / 2
         pred_y1 = pred[:, 1] - pred[:, 3] / 2
         pred_x2 = pred[:, 0] + pred[:, 2] / 2
         pred_y2 = pred[:, 1] + pred[:, 3] / 2
-        
+
         target_x1 = target[:, 0] - target[:, 2] / 2
         target_y1 = target[:, 1] - target[:, 3] / 2
         target_x2 = target[:, 0] + target[:, 2] / 2
@@ -446,9 +452,9 @@ class WIoU:
         # Enclosing box dimensions
         cw = torch.max(pred_x2, target_x2) - torch.min(pred_x1, target_x1)
         ch = torch.max(pred_y2, target_y2) - torch.min(pred_y1, target_y1)
-        
+
         # R_WIoU calculation according to paper formula (3.14)
-        r_wiou = torch.exp(dist / (cw ** 2 + ch ** 2 + self.eps))
+        r_wiou = torch.exp(dist / (cw**2 + ch**2 + self.eps))
 
         # Final WIoU loss calculation according to paper formula (3.13)
         # Use a detachable beta to construct the focusing factor
