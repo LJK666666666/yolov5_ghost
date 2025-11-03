@@ -22,10 +22,10 @@ python scripts/weighted_feature_fusion_experiment.py --mode test
 python scripts/weighted_feature_fusion_experiment.py --mode all --epochs 100
 
 # 或者分步骤运行
-python scripts/weighted_feature_fusion_experiment.py --mode baseline --epochs 100    # 基线实验
+python scripts/weighted_feature_fusion_experiment.py --mode baseline --epochs 100   # 基线实验
 python scripts/weighted_feature_fusion_experiment.py --mode wff --epochs 100        # WFF实验
 python scripts/weighted_feature_fusion_experiment.py --mode wff_concat --epochs 100 # WFF-Concat实验
-python scripts/weighted_feature_fusion_experiment.py --mode compare                  # 结果对比
+python scripts/weighted_feature_fusion_experiment.py --mode compare                 # 结果对比
 ```
 
 ### 方法三：直接训练
@@ -33,15 +33,15 @@ python scripts/weighted_feature_fusion_experiment.py --mode compare             
 ```bash
 # 训练WFF模型
 python train.py --data data/SafetyVests.v6/data.yaml \
-                --cfg models/yolov5s-wff.yaml \
-                --weights yolov5s.pt \
-                --epochs 100
+  --cfg models/yolov5s-wff.yaml \
+  --weights yolov5s.pt \
+  --epochs 100
 
 # 训练WFF-Concat模型（推荐）
 python train.py --data data/SafetyVests.v6/data.yaml \
-                --cfg models/yolov5s-wff-concat.yaml \
-                --weights yolov5s.pt \
-                --epochs 100
+  --cfg models/yolov5s-wff-concat.yaml \
+  --weights yolov5s.pt \
+  --epochs 100
 ```
 
 ## 📁 新增文件说明
@@ -49,22 +49,24 @@ python train.py --data data/SafetyVests.v6/data.yaml \
 ### 1. 核心模块实现
 
 #### `models/common.py` (新增模块)
+
 - **`WeightedFeatureFusion`**: 基础加权特征融合模块
-  - 逐元素加权求和，输出通道数等于输入通道数
-  - 适用于相同通道数的特征图融合
-  
+    - 逐元素加权求和，输出通道数等于输入通道数
+    - 适用于相同通道数的特征图融合
 - **`WeightedFeatureFusionConcat`**: 通道拼接版加权特征融合
-  - 加权后进行通道拼接，保持与原始Concat相同的行为
-  - 完全兼容原始YOLOv5结构
+    - 加权后进行通道拼接，保持与原始Concat相同的行为
+    - 完全兼容原始YOLOv5结构
 
 ### 2. 模型配置文件
 
 #### `models/yolov5s-wff.yaml`
+
 - **用途**：使用基础加权特征融合的YOLOv5s
 - **特点**：逐元素加权求和，需要统一通道数
 - **适用**：研究加权融合的纯粹效果
 
 #### `models/yolov5s-wff-concat.yaml` (推荐)
+
 - **用途**：使用通道拼接版加权特征融合的YOLOv5s
 - **特点**：完全兼容原始结构，可直接使用预训练权重
 - **适用**：实际应用和对比实验
@@ -72,6 +74,7 @@ python train.py --data data/SafetyVests.v6/data.yaml \
 ### 3. 实验脚本
 
 #### `scripts/weighted_feature_fusion_experiment.py`
+
 - **功能**：自动化对比实验脚本
 - **支持模式**：baseline、wff、wff_concat、compare、test、all
 - **输出**：完整的训练验证结果和权重分析
@@ -79,6 +82,7 @@ python train.py --data data/SafetyVests.v6/data.yaml \
 ### 4. 文档
 
 #### `docs/WEIGHTED_FEATURE_FUSION_GUIDE.md`
+
 - **内容**：本使用指南
 - **包含**：理论说明、使用方法、技术细节
 
@@ -92,7 +96,7 @@ output = torch.cat([feature1, feature2], dim=1)  # 通道拼接
 
 # 加权特征融合
 w1, w2 = learnable_weights  # 可学习权重
-w1, w2 = w1/(w1+w2), w2/(w1+w2)  # 归一化
+w1, w2 = w1 / (w1 + w2), w2 / (w1 + w2)  # 归一化
 output = w1 * feature1 + w2 * feature2  # 加权求和
 
 # 加权特征融合拼接
@@ -114,22 +118,24 @@ w = w / (torch.sum(w) + eps)
 
 ### 网络结构对比
 
-| 层级 | 原始YOLOv5s | WFF版本 | WFF-Concat版本 |
-|------|-------------|---------|----------------|
-| P4融合 | `Concat([P4, Up])` | `WFF([P4, Up])` | `WFFConcat([P4, Up])` |
-| P3融合 | `Concat([P3, Up])` | `WFF([P3, Up])` | `WFFConcat([P3, Up])` |
+| 层级   | 原始YOLOv5s          | WFF版本           | WFF-Concat版本          |
+| ------ | -------------------- | ----------------- | ----------------------- |
+| P4融合 | `Concat([P4, Up])`   | `WFF([P4, Up])`   | `WFFConcat([P4, Up])`   |
+| P3融合 | `Concat([P3, Up])`   | `WFF([P3, Up])`   | `WFFConcat([P3, Up])`   |
 | P4回流 | `Concat([Down, P4])` | `WFF([Down, P4])` | `WFFConcat([Down, P4])` |
 | P5回流 | `Concat([Down, P5])` | `WFF([Down, P5])` | `WFFConcat([Down, P5])` |
 
 ## 📊 预期效果
 
 ### 定量指标改善
+
 - **mAP@0.5**：提升 1-3%
 - **mAP@0.5:0.95**：提升 0.5-2%
 - **多尺度检测**：显著改善
 - **参数增加**：极少（每个融合点2-4个参数）
 
 ### 定性效果改善
+
 - ✅ 不同尺度特征的智能权重分配
 - ✅ 网络自适应学习重要特征
 - ✅ 复杂场景下的特征融合优化
@@ -140,6 +146,7 @@ w = w / (torch.sum(w) + eps)
 ### 模型选择
 
 **推荐使用 `yolov5s-wff-concat.yaml`**：
+
 - 完全兼容原始YOLOv5结构
 - 可以直接加载预训练权重
 - 训练稳定性更好
@@ -164,12 +171,12 @@ python train.py --cfg models/yolov5s-wff-concat.yaml --weights yolov5s.pt
 
 ```python
 # 加载模型
-checkpoint = torch.load('best.pt')
-state_dict = checkpoint['model'].state_dict()
+checkpoint = torch.load("best.pt")
+state_dict = checkpoint["model"].state_dict()
 
 # 查看权重
 for name, param in state_dict.items():
-    if 'weights' in name and 'WeightedFeatureFusion' in name:
+    if "weights" in name and "WeightedFeatureFusion" in name:
         weights = param.cpu().numpy()
         normalized = weights / weights.sum()
         print(f"{name}: {normalized}")
@@ -180,6 +187,7 @@ for name, param in state_dict.items():
 ### 权重学习模式
 
 通常会观察到以下模式：
+
 - **P3层**：更关注细节特征（小目标检测）
 - **P4层**：平衡的权重分配（中等目标）
 - **P5层**：更关注语义特征（大目标检测）
@@ -198,7 +206,7 @@ python val.py --weights runs/train/wff_concat_experiment/weights/best.pt
 ## 📝 项目故事模板
 
 > "我们发现，标准的YOLOv5在进行特征融合时，对所有尺度的特征图一视同仁。我们认为，对于反光衣检测这类任务，某些特定尺度的特征可能更为关键。因此，我们借鉴了BiFPN（加权双向特征金字塔网络）的核心思想，引入了一个高效的加权融合机制。
-> 
+>
 > 该机制让网络在训练中自主学习每个输入特征的权重，从而实现更智能、更高效的特征融合。实验结果表明，加权特征融合相比标准拼接在复杂场景下的检测精度提升了X%，特别是在多尺度目标检测上表现更加出色。通过分析学习到的权重，我们发现网络确实学会了为不同检测任务分配不同的特征重要性。"
 
 ## 🎯 下一步优化方向

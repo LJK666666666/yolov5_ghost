@@ -11,14 +11,16 @@ YOLOv5 采用早停（Early Stopping）机制来防止模型过拟合，提高�
 早停判断基于 **fitness 分数**，这是一个综合评估指标，用于衡量模型在验证集上的性能。
 
 #### Fitness 计算公式
+
 ```python
 def fitness(x):
-    """计算模型的综合性能分数"""
+    """计算模型的综合性能分数."""
     w = [0.0, 0.0, 0.1, 0.9]  # 权重 [P, R, mAP@0.5, mAP@0.5:0.95]
     return (x[:, :4] * w).sum(1)
 ```
 
 #### 各指标含义与权重
+
 - **P (Precision)**: 精确率 - 权重 **0.0**
 - **R (Recall)**: 召回率 - 权重 **0.0**
 - **mAP@0.5**: IoU阈值0.5时的平均精确率 - 权重 **0.1** (10%)
@@ -31,34 +33,34 @@ def fitness(x):
 ```python
 class EarlyStopping:
     def __init__(self, patience=30):  # 在train.py中默认设为100
-        self.best_fitness = 0.0      # 记录最佳fitness分数
-        self.best_epoch = 0          # 记录最佳epoch
-        self.patience = patience     # 耐心值（epoch数）
-        self.possible_stop = False   # 可能停止标志
-        
+        self.best_fitness = 0.0  # 记录最佳fitness分数
+        self.best_epoch = 0  # 记录最佳epoch
+        self.patience = patience  # 耐心值（epoch数）
+        self.possible_stop = False  # 可能停止标志
+
     def __call__(self, epoch, fitness):
         # 如果当前fitness >= 历史最佳，更新记录
         if fitness >= self.best_fitness:
             self.best_epoch = epoch
             self.best_fitness = fitness
-            
+
         # 计算自最佳epoch以来的间隔
         delta = epoch - self.best_epoch
-        
+
         # 判断是否触发早停
         self.possible_stop = delta >= (self.patience - 1)
         stop = delta >= self.patience
-        
+
         return stop
 ```
 
 ### 3. 默认配置参数
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `patience` | 100 | 连续多少个epoch无改进后触发早停 |
-| `best_fitness` | 0.0 | 初始最佳fitness分数 |
-| `fitness权重` | [0.0, 0.0, 0.1, 0.9] | [P, R, mAP@0.5, mAP@0.5:0.95] |
+| 参数           | 默认值               | 说明                            |
+| -------------- | -------------------- | ------------------------------- |
+| `patience`     | 100                  | 连续多少个epoch无改进后触发早停 |
+| `best_fitness` | 0.0                  | 初始最佳fitness分数             |
+| `fitness权重`  | [0.0, 0.0, 0.1, 0.9] | [P, R, mAP@0.5, mAP@0.5:0.95]   |
 
 ## 训练过程中的早停检查
 
@@ -117,6 +119,7 @@ def fitness(x):
 当早停条件满足时，训练会：
 
 1. **输出提示信息**:
+
    ```
    Stopping training early as no improvement observed in last 100 epochs.
    Best results observed at epoch X, best model saved as best.pt.
@@ -140,6 +143,7 @@ def fitness(x):
 ### 2. 监控指标
 
 关注训练日志中的关键指标：
+
 - `mAP@0.5`: 传统目标检测精度
 - `mAP@0.5:0.95`: COCO标准精度（权重90%）
 - `val/box_loss`: 边界框回归损失
@@ -149,12 +153,14 @@ def fitness(x):
 ### 3. 调试建议
 
 如果训练过早停止：
+
 1. 增加 `patience` 值
 2. 检查学习率是否过高
 3. 检查数据质量和标注准确性
 4. 考虑调整数据增强策略
 
 如果训练不收敛：
+
 1. 减小学习率
 2. 增加warmup epochs
 3. 检查anchor设置
