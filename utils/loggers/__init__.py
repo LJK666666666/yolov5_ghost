@@ -256,8 +256,14 @@ class Loggers:
             file = self.save_dir / "results.csv"
             n = len(vals) + 1  # number of cols (use actual vals length)
             # 确保keys的长度足够
-            keys_to_use = self.keys[:len(vals)] if len(vals) <= len(self.keys) else self.keys + [f"extra_{i}" for i in range(len(vals) - len(self.keys))]
-            s = "" if file.exists() else (("%20s," * n % tuple(["epoch"] + keys_to_use)).rstrip(",") + "\n")  # add header
+            keys_to_use = (
+                self.keys[: len(vals)]
+                if len(vals) <= len(self.keys)
+                else self.keys + [f"extra_{i}" for i in range(len(vals) - len(self.keys))]
+            )
+            s = (
+                "" if file.exists() else (("%20s," * n % tuple(["epoch"] + keys_to_use)).rstrip(",") + "\n")
+            )  # add header
             with open(file, "a") as f:
                 f.write(s + ("%20.5g," * n % tuple([epoch] + vals)).rstrip(",") + "\n")
         if self.ndjson_console or self.ndjson_file:

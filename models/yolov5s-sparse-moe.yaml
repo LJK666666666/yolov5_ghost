@@ -2,7 +2,7 @@
 
 # YOLOv5s with Sparse MoE (Mixture of Experts) Architecture
 # 基于GUIDE/MOE2.md重新设计的真正稀疏MoE架构
-# 
+#
 # 核心设计原则：
 # 1. 激活率控制在6%-12.5%之间，实现真正的稀疏性
 # 2. 大幅增加专家数量(16-32个)，提升模型容量
